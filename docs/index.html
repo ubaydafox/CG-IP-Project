@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f7f7f7">
+<title>Chrono Run: DN Dash</title>
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #f7f7f7;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+/*
+  CHRONO RUN: DN DASH - Mobile / Web edition
+  CSE-402 Computer Graphics & Image Processing Lab, Metropolitan University, Sylhet
+  Nahdiul Islam Rony (231-115-069) & Abu Ubayda (231-115-080)
+
+  A port of the C++/OpenGL desktop game (src/main.cpp) to HTML5 Canvas, so it
+  runs in any phone or desktop browser. The game logic, sprites, physics and
+  day-night palette are the same as the desktop version.
+
+  Touch controls : JUMP button (or tap anywhere) = jump, hold DUCK button = duck
+  Keyboard       : SPACE/UP jump, DOWN duck, P pause, R restart, H hitbox, M sound
+*/
+"use strict";
+
+// ---------------------------------------------------------------- config
+const W = 1000, H = 450, GROUND_Y = 110, PX = 4;
+const BASE_SPEED = 4, MAX_SPEED = 8, SPEED_RAMP = 0.0008;
+const JUMP_FORCE = 12.5, GRAVITY = 0.55;
+const CYCLE = 150, DAY_END = 90, FADE = 4, NIGHT_END = 146;
+
+// ---------------------------------------------------------------- sprites
+const RUN_A = [
+  ".......####...","......######..","......####.#..","......######..",".......####...",
+  "........##....","......#####...",".....#######..","....##.###.##.","...##..###..##",
+  "..##...###....",".......###....","......#####...",".....##...##..","....##.....##.",
+  "...##.......##","..##........##",".###........##"];
+const RUN_B = [
+  ".......####...","......######..","......####.#..","......######..",".......####...",
+  "........##....","......#####...",".....#######..",".....#.###.#..",".....#.###.#..",
+  ".....#.###.#..",".......###....",".......####...",".......##.##..",".......##..##.",
+  ".......##.#...",".......##.....",".......###...."];
+const JUMP_S = [
+  ".......####...","......######..","......####.#..","......######..",".......####...",
+  "........##....","......#####...",".....#######..","....##.###.##.","...##..###..##",
+  ".......###....",".......###....","......#####...",".....##..###..","....##.....##.",
+  "...##.....##..","..............",".............."];
+const DUCK_A = [
+  "............####..","...........######.","...........####.#.","..##########.####.",
+  ".############.....","##..########......","......##..##......",".....##....##.....",
+  "....##......##....","...###......###..."];
+const DUCK_B = [
+  "............####..","...........######.","...........####.#.","..##########.####.",
+  ".############.....","##..########......","......##.##.......","......##.##.......",
+  "......##..##......",".....###..###....."];
+
+// ---------------------------------------------------------------- helpers
+const rand = (a, b) => a + (b - a) * Math.random();
+const clamp01 = t => Math.max(0, Math.min(1, t));
+const smooth01 = t => { t = clamp01(t); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => { t = clamp01(t); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; };
+const css = c => `rgb(${(c[0] * 255) | 0},${(c[1] * 255) | 0},${(c[2] * 255) | 0})`;
+const aabb = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+// ---------------------------------------------------------------- state
+let state = "start";           // start | playing | paused | over
+let bgCol = [0.97, 0.97, 0.97], inkCol = [0.33, 0.33, 0.33], nightF = 0, phase = "DAWN";
+const rX = 100;
+let rY = GROUND_Y, rVY = 0, runAnim = 0, grounded = true, ducking = false;
+let gameSpeed = BASE_SPEED, score = 0, cycleT = 0, lastMile = 0, blinkTimer = 0;
+let highScore = +(localStorage.getItem("cr_hi") || 0);
+let spawnAcc = 0, nextSpawn = 400, showHB = false;
+let obstacles = [], particles = [], clouds = [], dashes = [], bumps = [], stars = [], farB = [], nearB = [];
+
+// ---------------------------------------------------------------- gentle sound (Web Audio)
+let actx = null, soundOn = localStorage.getItem("cr_sound") !== "0";
+function ensureAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (actx && actx.state === "suspended") actx.resume();
+}
+function tone(f0, f1, dur, delay, vol) {
+  if (!soundOn || !actx) return;
+  const t = actx.currentTime + delay;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = "sine";
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.012);   // soft attack
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);  // smooth release
+  o.connect(g); g.connect(actx.destination);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+const sfx = {
+  jump:  () => tone(520, 720, 0.11, 0, 0.10),
+  duck:  () => tone(320, 240, 0.07, 0, 0.06),
+  score: () => { tone(660, 660, 0.14, 0, 0.08); tone(880, 880, 0.24, 0.11, 0.08); },
+  over:  () => { tone(440, 330, 0.25, 0, 0.10); tone(330, 247, 0.40, 0.20, 0.09); },
+};
+
+// ---------------------------------------------------------------- world
+function makeBuilding(x, isFar) {
+  const b = { x, w: isFar ? rand(40, 110) : rand(30, 80), h: isFar ? rand(50, 150) : rand(30, 90),
+              cols: 2 + ((Math.random() * 3) | 0), rows: 3 + ((Math.random() * 4) | 0), lit: [] };
+  for (let i = 0; i < 24; i++) b.lit.push(Math.random() < 0.33);
+  return b;
+}
+function initWorld() {
+  farB = []; nearB = [];
+  for (let x = 0; x < W + 200;) { const b = makeBuilding(x, true);  farB.push(b);  x += b.w + rand(4, 30); }
+  for (let x = 0; x < W + 200;) { const b = makeBuilding(x, false); nearB.push(b); x += b.w + rand(20, 90); }
+  clouds = []; for (let i = 0; i < 4; i++)  clouds.push({ x: rand(0, W), y: rand(250, 360), s: rand(0.7, 1.2) });
+  dashes = []; for (let i = 0; i < 40; i++) dashes.push({ x: rand(0, W), y: rand(GROUND_Y - 30, GROUND_Y - 6), w: rand(2, 10) });
+  bumps  = []; for (let i = 0; i < 4; i++)  bumps.push({ x: rand(0, W), w: rand(14, 30) });
+  stars  = []; for (let i = 0; i < 45; i++) stars.push({ x: rand(0, W), y: rand(240, H - 50), tw: rand(0, 10) });
+}
+function resetGame() {
+  obstacles = []; particles = [];
+  rY = GROUND_Y; rVY = 0; grounded = true; ducking = false; runAnim = 0;
+  gameSpeed = BASE_SPEED; score = 0; cycleT = 0; lastMile = 0; blinkTimer = 0;
+  spawnAcc = 0; nextSpawn = 400;
+  state = "playing";
+}
+function spawnDust(x, y, n) {
+  for (let i = 0; i < n; i++)
+    particles.push({ x: x + rand(-6, 6), y: y + rand(0, 4), vx: rand(-2.5, -0.5), vy: rand(0.3, 1.8),
+                     life: 1, decay: rand(0.03, 0.06), size: rand(2, 4) });
+}
+function spawnObstacle() {
+  const o = { x: W + 40, anim: 0, y: GROUND_Y };
+  if (score > 150 && Math.random() < 0.25) {
+    Object.assign(o, Math.random() < 0.5 ? { type: "droneHigh", w: 54, h: 24, y: GROUND_Y + 50 }
+                                         : { type: "droneLow",  w: 54, h: 24, y: GROUND_Y + 20 });
+  } else {
+    const t = (Math.random() * 4) | 0;
+    Object.assign(o, [{ type: "cone", w: 26, h: 44 }, { type: "cone2", w: 54, h: 44 },
+                      { type: "barrier", w: 56, h: 40 }, { type: "bollard", w: 44, h: 48 }][t]);
+  }
+  obstacles.push(o);
+}
+
+// ---------------------------------------------------------------- day-night palette
+function updatePalette() {
+  const t = cycleT % CYCLE;
+  const dawnBg = [0.98, 0.94, 0.90], dayBg = [0.97, 0.97, 0.97], duskBg = [0.98, 0.90, 0.84], nightBg = [0.11, 0.12, 0.16];
+  let dBg;
+  if (t >= NIGHT_END) dBg = dawnBg;
+  else if (t < 20)    dBg = lerp(dawnBg, dayBg, t / 20);
+  else if (t < 70)    dBg = dayBg;
+  else                dBg = lerp(dayBg, duskBg, (t - 70) / 20);
+
+  if (t < DAY_END)               nightF = 0;
+  else if (t < DAY_END + FADE)   nightF = smooth01((t - DAY_END) / FADE);
+  else if (t < NIGHT_END)        nightF = 1;
+  else                           nightF = 1 - smooth01((t - NIGHT_END) / FADE);
+
+  bgCol  = lerp(dBg, nightBg, nightF);
+  inkCol = nightF < 0.5 ? [0.33, 0.33, 0.33] : [0.86, 0.86, 0.88];
+  phase  = t < 20 ? "DAWN" : t < 70 ? "DAY" : t < DAY_END + FADE / 2 ? "DUSK" : t < NIGHT_END + FADE / 2 ? "NIGHT" : "DAWN";
+}
+const tone01 = k => lerp(bgCol, inkCol, k);
+
+// ---------------------------------------------------------------- canvas & drawing (world uses y-up like OpenGL)
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+let dpr = 1, scale = 1, offX = 0, offY = 0;
+let TX = 0, TY = 0;  // local translation for obstacle drawing
+const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints > 0;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+  scale = Math.min(cv.width / W, cv.height / H);
+  offX = (cv.width - W * scale) / 2;
+  // Portrait phones: keep the game in the upper part so buttons sit below it
+  offY = cv.height > cv.width ? cv.height * 0.18 : (cv.height - H * scale) / 2;
+}
+addEventListener("resize", resize);
+
+const fill = c => { ctx.fillStyle = css(c); };
+const rect = (x, y, w, h) => ctx.fillRect(x + TX, H - (y + TY) - h, w, h);
+function circle(x, y, r) { ctx.beginPath(); ctx.arc(x + TX, H - (y + TY), r, 0, Math.PI * 2); ctx.fill(); }
+function poly(p) {
+  ctx.beginPath(); ctx.moveTo(p[0] + TX, H - (p[1] + TY));
+  for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i] + TX, H - (p[i + 1] + TY));
+  ctx.closePath(); ctx.fill();
+}
+function text(s, x, y, size, align = "left", font = '"Courier New", monospace', weight = "bold") {
+  ctx.font = `${weight} ${size}px ${font}`; ctx.textAlign = align; ctx.fillText(s, x, H - y);
+}
+function sprite(rows, x, y) {
+  const n = rows.length;
+  for (let r = 0; r < n; r++) {
+    const row = rows[r], yy = H - (y + (n - 1 - r) * PX) - PX;
+    for (let c = 0; c < row.length; c++) if (row[c] === "#") ctx.fillRect(x + c * PX, yy, PX + 0.3, PX + 0.3);
+  }
+}
+
+function renderBackground() {
+  const t = cycleT % CYCLE;
+  if (nightF < 0.5) {
+    const p = t < DAY_END ? t / DAY_END : 1;
+    fill(lerp(bgCol, [0.99, 0.80, 0.40], 0.55));
+    circle(80 + 840 * p, GROUND_Y + 60 + Math.sin(p * Math.PI) * 230, 18);
+  } else {
+    const now = performance.now();
+    for (const s of stars) {
+      const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(now * 0.003 + s.tw));
+      fill(tone01(tw * 0.8)); rect(s.x, s.y, 2, 2);
+    }
+    const p = (t - DAY_END) / (NIGHT_END + FADE - DAY_END);
+    const mx = 80 + 840 * p, my = GROUND_Y + 60 + Math.sin(p * Math.PI) * 230;
+    fill(tone01(0.9)); circle(mx, my, 15);
+    fill(bgCol);       circle(mx + 7, my + 4, 13);
+  }
+  fill(tone01(0.10));
+  for (const c of clouds) {
+    const s = c.s;
+    rect(c.x, c.y, 70 * s, 10 * s);
+    circle(c.x + 18 * s, c.y + 10 * s, 12 * s); circle(c.x + 38 * s, c.y + 14 * s, 16 * s); circle(c.x + 56 * s, c.y + 8 * s, 10 * s);
+  }
+  fill(tone01(0.07)); for (const b of farB)  rect(b.x, GROUND_Y, b.w, b.h);
+  fill(tone01(0.13)); for (const b of nearB) rect(b.x, GROUND_Y, b.w, b.h);
+  if (nightF > 0.5) {
+    fill(tone01(0.40));
+    for (const b of nearB)
+      for (let c = 0; c < b.cols; c++) for (let r = 0; r < b.rows; r++)
+        if (b.lit[c * 6 + r]) rect(b.x + (c + 1) * b.w / (b.cols + 1) - 2, GROUND_Y + (r + 1) * b.h / (b.rows + 1) - 2, 4, 4);
+  }
+}
+
+function renderGround() {
+  fill(inkCol); rect(0, GROUND_Y - 1, W, 2);
+  ctx.strokeStyle = css(inkCol); ctx.lineWidth = 2;
+  for (const b of bumps) {
+    ctx.beginPath();
+    ctx.moveTo(b.x, H - GROUND_Y); ctx.lineTo(b.x + 4, H - GROUND_Y - 4);
+    ctx.lineTo(b.x + b.w - 4, H - GROUND_Y - 4); ctx.lineTo(b.x + b.w, H - GROUND_Y);
+    ctx.stroke();
+  }
+  fill(tone01(0.75)); for (const d of dashes) rect(d.x, d.y, d.w, 2);
+}
+
+function renderRunner() {
+  fill(inkCol);
+  const f = state === "start" ? 0 : ((runAnim | 0) % 2);
+  if (ducking && grounded) sprite(f ? DUCK_B : DUCK_A, rX, rY);
+  else if (!grounded)      sprite(JUMP_S, rX, rY);
+  else                     sprite(f ? RUN_B : RUN_A, rX, rY);
+}
+
+function drawCone(ox) {
+  fill(inkCol); rect(ox, 0, 26, 4); poly([ox + 3, 4, ox + 23, 4, ox + 15, 44, ox + 11, 44]);
+  fill(bgCol);
+  poly([ox + 5.8, 18, ox + 20.2, 18, ox + 18.8, 25, ox + 7.2, 25]);
+  poly([ox + 8.6, 32, ox + 17.4, 32, ox + 16.6, 36, ox + 9.4, 36]);
+}
+function renderObstacles() {
+  for (const o of obstacles) {
+    TX = o.x; TY = o.y;
+    switch (o.type) {
+      case "cone":  drawCone(0); break;
+      case "cone2": drawCone(0); drawCone(28); break;
+      case "barrier":
+        fill(inkCol);
+        rect(6, 0, 5, 24); rect(45, 0, 5, 24); rect(2, 0, 13, 3); rect(41, 0, 13, 3); rect(0, 22, 56, 16); rect(26, 38, 4, 4);
+        fill(bgCol);
+        for (let i = 0; i < 4; i++) { const x0 = 4 + i * 13, x1 = Math.min(x0 + 12, 54); poly([x0, 25, x0 + 5, 25, x1, 35, x1 - 5, 35]); }
+        break;
+      case "bollard": {
+        const hs = [38, 48, 38];
+        for (let i = 0; i < 3; i++) {
+          const bx = i * 16, h = hs[i];
+          fill(inkCol); rect(bx, 0, 12, h - 6); circle(bx + 6, h - 6, 6);
+          fill(bgCol);  rect(bx, h - 20, 12, 4);
+        }
+        break;
+      }
+      default: { // drones
+        fill(inkCol);
+        rect(10, 6, 34, 10); circle(27, 16, 7); rect(0, 16, 54, 3); rect(14, 0, 3, 6); rect(37, 0, 3, 6);
+        const rw = 4 + 14 * Math.abs(Math.cos(o.anim * 20));
+        rect(5 - rw / 2, 21, rw, 2); rect(49 - rw / 2, 21, rw, 2);
+        fill(bgCol); rect(32, 10, 5, 3);
+      }
+    }
+  }
+  TX = 0; TY = 0;
+}
+
+function renderParticles() { for (const p of particles) { fill(tone01(p.life * 0.8)); rect(p.x, p.y, p.size, p.size); } }
+
+const runnerBox = () => (ducking && grounded) ? { x: rX + 4, y: rY, w: 64, h: 38 } : { x: rX + 12, y: rY, w: 36, h: 68 };
+const obstBox = o => ({ x: o.x + 4, y: o.y, w: o.w - 8, h: o.h - 2 });
+
+function renderHitboxes() {
+  if (!showHB) return;
+  ctx.lineWidth = 2;
+  const sr = b => ctx.strokeRect(b.x, H - b.y - b.h, b.w, b.h);
+  ctx.strokeStyle = "rgb(26,204,51)"; sr(runnerBox());
+  ctx.strokeStyle = "rgb(230,38,38)"; for (const o of obstacles) sr(obstBox(o));
+}
+
+function drawRestartIcon(cx, cy) {
+  ctx.strokeStyle = css(inkCol); ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, H - cy, 14, -40 * Math.PI / 180, -320 * Math.PI / 180, true); ctx.stroke();
+  const ex = cx + Math.cos(40 * Math.PI / 180) * 14, ey = cy + Math.sin(40 * Math.PI / 180) * 14;
+  fill(inkCol); poly([ex - 7, ey + 2, ex + 5, ey + 6, ex + 3, ey - 7]);
+}
+
+function renderHUD() {
+  const hi = "HI " + String(highScore).padStart(5, "0"), cur = String(score | 0).padStart(5, "0");
+  fill(tone01(0.7)); text(hi, W - 110, H - 40, 18, "right");
+  if (!(blinkTimer > 0 && (blinkTimer % 0.3) < 0.15)) { fill(inkCol); text(cur, W - 30, H - 40, 18, "right"); }
+  fill(tone01(0.6)); text(phase + (showHB ? "  [HITBOX]" : ""), 30, H - 40, 16);
+
+  const mid = W / 2;
+  if (state === "start") {
+    fill(inkCol);       text("CHRONO RUN : DN DASH", mid, 300, 30, "center", "Georgia, serif");
+    fill(tone01(0.8));  text(isTouch ? "Tap to start" : "Press SPACE to start", mid, 265, 18, "center");
+    fill(tone01(0.6));  text("Jump over cones, barriers & bollards  -  Duck under high drones", mid, 238, 13, "center");
+    fill(tone01(0.5));
+    text("Nahdiul Islam Rony (231-115-069)  &  Abu Ubayda (231-115-080)", mid, 50, 12, "center");
+    text("CSE-402 CG & IP Lab  |  Lecturer: Shrabanti Chowdhury  |  Section B", mid, 32, 12, "center");
+  } else if (state === "paused") {
+    fill(inkCol);      text("P A U S E D", mid, 280, 28, "center", "Georgia, serif");
+    fill(tone01(0.6)); text(isTouch ? "Tap to resume" : "Press P to resume", mid, 250, 16, "center");
+  } else if (state === "over") {
+    fill(inkCol);      text("G A M E   O V E R", mid, 300, 28, "center", "Georgia, serif");
+    drawRestartIcon(mid, 262);
+    fill(tone01(0.6)); text(isTouch ? "Tap to restart" : "Press SPACE or R to restart", mid, 222, 16, "center");
+    if ((score | 0) >= highScore && score > 5) { fill(inkCol); text("NEW HIGH SCORE!", mid, 198, 16, "center"); }
+  } else if (!isTouch) {
+    fill(tone01(0.5));
+    text("SPACE/UP jump   DOWN duck   P pause   R restart   H hitbox   M sound: " + (soundOn ? "on" : "off"), mid, 12, 12, "center");
+  }
+}
+
+// ---------------------------------------------------------------- on-screen touch buttons (screen space)
+let buttons = {};
+function layoutButtons() {
+  const m = Math.min(cv.width, cv.height);
+  const r = Math.max(38 * dpr, Math.min(m * 0.12, 70 * dpr));
+  const pad = 22 * dpr;
+  const by = cv.height - r - pad;
+  const s = Math.max(20 * dpr, r * 0.45);
+  buttons = {
+    duck:  { x: pad + r,             y: by, r, label: "DUCK" },
+    jump:  { x: cv.width - pad - r,  y: by, r, label: "JUMP" },
+    pause: { x: cv.width / 2 - s * 1.4, y: pad + s, r: s, label: state === "paused" ? ">" : "II" },
+    sound: { x: cv.width / 2 + s * 1.4, y: pad + s, r: s, label: soundOn ? "SND" : "OFF" },
+  };
+}
+function renderButtons() {
+  if (!isTouch) return;
+  layoutButtons();
+  for (const k in buttons) {
+    if ((k === "duck" || k === "jump") && state !== "playing") continue;
+    const b = buttons[k], active = (k === "duck" && ducking) || (k === "jump" && !grounded);
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    const ic = tone01(active ? 0.30 : 0.12);
+    ctx.fillStyle = css(ic); ctx.fill();
+    ctx.lineWidth = 2 * dpr; ctx.strokeStyle = css(tone01(0.45)); ctx.stroke();
+    ctx.fillStyle = css(tone01(0.85));
+    ctx.font = `bold ${Math.round(b.r * 0.42)}px "Courier New", monospace`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(b.label, b.x, b.y + 1);
+    ctx.textBaseline = "alphabetic";
+  }
+}
+const hit = (b, x, y) => b && (x - b.x) ** 2 + (y - b.y) ** 2 <= (b.r * 1.15) ** 2;
+
+// ---------------------------------------------------------------- render frame
+function render() {
+  updatePalette();
+  document.body.style.background = css(bgCol);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = css(bgCol); ctx.fillRect(0, 0, cv.width, cv.height);
+
+  ctx.save();
+  ctx.translate(offX, offY); ctx.scale(scale, scale);
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  renderBackground(); renderGround(); renderObstacles(); renderRunner(); renderParticles(); renderHitboxes(); renderHUD();
+  ctx.restore();
+
+  if (isTouch && cv.height > cv.width) {
+    ctx.fillStyle = css(tone01(0.5)); ctx.textAlign = "center";
+    ctx.font = `bold ${Math.round(14 * dpr)}px "Courier New", monospace`;
+    ctx.fillText("Rotate your phone for a bigger view", cv.width / 2, offY + H * scale + 30 * dpr);
+  }
+  renderButtons();
+}
+
+// ---------------------------------------------------------------- update
+function scrollWorld(dt) {
+  const scrollLayer = (L, k, isFar) => {
+    let maxRight = 0;
+    for (const b of L) { b.x -= gameSpeed * k * dt; maxRight = Math.max(maxRight, b.x + b.w); }
+    for (let i = 0; i < L.length; i++) if (L[i].x + L[i].w < 0) {
+      L[i] = makeBuilding(maxRight + (isFar ? rand(4, 30) : rand(20, 90)), isFar);
+      maxRight = L[i].x + L[i].w;
+    }
+  };
+  scrollLayer(farB, 0.10, true); scrollLayer(nearB, 0.25, false);
+  for (const c of clouds) { c.x -= 0.25 * dt; if (c.x < -100) { c.x = W + rand(20, 200); c.y = rand(250, 360); } }
+  for (const d of dashes) { d.x -= gameSpeed * dt; if (d.x < -12) { d.x = W + rand(0, 40); d.y = rand(GROUND_Y - 30, GROUND_Y - 6); d.w = rand(2, 10); } }
+  for (const b of bumps)  { b.x -= gameSpeed * dt; if (b.x < -40) { b.x = W + rand(50, 500); b.w = rand(14, 30); } }
+}
+function updateParticles(dt) {
+  for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; }
+  particles = particles.filter(p => p.life > 0);
+}
+function update(dt) {
+  if (state !== "playing") { updateParticles(dt); return; }
+  cycleT += dt / 60;
+
+  score += 0.1 * (gameSpeed / BASE_SPEED) * dt;
+  if ((score | 0) > highScore) { highScore = score | 0; }
+  gameSpeed = Math.min(MAX_SPEED, BASE_SPEED + score * SPEED_RAMP);
+
+  if (((score / 100) | 0) > lastMile) { lastMile = (score / 100) | 0; blinkTimer = 1.2; sfx.score(); }
+  if (blinkTimer > 0) blinkTimer -= dt / 60;
+
+  if (!grounded) {
+    rVY -= GRAVITY * dt;
+    if (ducking) rVY -= GRAVITY * 1.5 * dt;   // fast fall
+    rY += rVY * dt;
+    if (rY <= GROUND_Y) { rY = GROUND_Y; rVY = 0; grounded = true; spawnDust(rX + 20, GROUND_Y, 5); }
+  }
+  runAnim += 0.15 * (gameSpeed / BASE_SPEED) * dt;
+  scrollWorld(dt);
+
+  spawnAcc += gameSpeed * dt;
+  if (spawnAcc >= nextSpawn) {
+    spawnObstacle(); spawnAcc = 0;
+    nextSpawn = 380 + (gameSpeed - BASE_SPEED) * 40 + rand(0, 340);
+  }
+
+  const rb = runnerBox();
+  for (const o of obstacles) {
+    o.x -= gameSpeed * dt; o.anim += dt / 60;
+    if (aabb(rb, obstBox(o))) {
+      state = "over"; sfx.over();
+      localStorage.setItem("cr_hi", highScore);
+      for (let k = 0; k < 14; k++)
+        particles.push({ x: rX + 30, y: rY + 40, vx: rand(-3, 3), vy: rand(-1, 4), life: 1, decay: rand(0.02, 0.04), size: rand(3, 5) });
+      break;
+    }
+  }
+  obstacles = obstacles.filter(o => o.x + o.w >= -50);
+  updateParticles(dt);
+}
+
+// ---------------------------------------------------------------- input
+function doJump() {
+  ensureAudio();
+  if (state === "start" || state === "over") { resetGame(); return; }
+  if (state === "paused") { state = "playing"; return; }
+  if (state === "playing" && grounded) { rVY = JUMP_FORCE; grounded = false; sfx.jump(); }
+}
+function releaseJump() { if (!grounded && rVY > 4) rVY *= 0.55; }
+function startDuck() { if (state !== "playing") return; if (!ducking && grounded) sfx.duck(); ducking = true; }
+function togglePause() { if (state === "playing") state = "paused"; else if (state === "paused") state = "playing"; }
+function toggleSound() { soundOn = !soundOn; localStorage.setItem("cr_sound", soundOn ? "1" : "0"); ensureAudio(); }
+
+addEventListener("keydown", e => {
+  if (e.repeat) return;
+  const k = e.key;
+  if (k === " " || k === "ArrowUp") { e.preventDefault(); doJump(); }
+  else if (k === "ArrowDown") { e.preventDefault(); startDuck(); }
+  else if (k === "p" || k === "P") togglePause();
+  else if (k === "r" || k === "R") { ensureAudio(); resetGame(); }
+  else if (k === "h" || k === "H") showHB = !showHB;
+  else if (k === "m" || k === "M") toggleSound();
+});
+addEventListener("keyup", e => {
+  if (e.key === " " || e.key === "ArrowUp") releaseJump();
+  if (e.key === "ArrowDown") ducking = false;
+});
+
+// Touch: JUMP button / tap anywhere = jump, hold DUCK = duck
+let duckTouch = null, jumpTouch = null;
+function tryFullscreenLandscape() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement && el.requestFullscreen) {
+    el.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(() => {}))
+      .catch(() => {});
+  }
+}
+cv.addEventListener("touchstart", e => {
+  e.preventDefault();
+  ensureAudio();
+  layoutButtons();
+  for (const t of e.changedTouches) {
+    const x = t.clientX * dpr, y = t.clientY * dpr;
+    if (hit(buttons.pause, x, y)) { togglePause(); continue; }
+    if (hit(buttons.sound, x, y)) { toggleSound(); continue; }
+    if (state === "playing" && hit(buttons.duck, x, y)) { duckTouch = t.identifier; startDuck(); continue; }
+    if (state === "start") tryFullscreenLandscape();
+    jumpTouch = t.identifier; doJump();
+  }
+}, { passive: false });
+function touchEnd(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === duckTouch) { duckTouch = null; ducking = false; }
+    if (t.identifier === jumpTouch) { jumpTouch = null; releaseJump(); }
+  }
+}
+cv.addEventListener("touchend", touchEnd, { passive: false });
+cv.addEventListener("touchcancel", touchEnd, { passive: false });
+
+// Mouse (desktop browsers): left click = jump, right click hold = duck
+cv.addEventListener("mousedown", e => { if (e.button === 0) doJump(); else if (e.button === 2) startDuck(); });
+cv.addEventListener("mouseup",   e => { if (e.button === 0) releaseJump(); else if (e.button === 2) ducking = false; });
+cv.addEventListener("contextmenu", e => e.preventDefault());
+
+// Auto-pause when the app goes to the background
+document.addEventListener("visibilitychange", () => { if (document.hidden && state === "playing") state = "paused"; });
+
+// ---------------------------------------------------------------- main loop (delta-time)
+let last = performance.now();
+function loop(now) {
+  let dt = (now - last) / (1000 / 60);
+  last = now;
+  dt = Math.max(0, Math.min(3, dt));
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+resize(); initWorld(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -34,6 +34,8 @@ The standout feature is a seamless, real-time day-night cycle spanning four dist
 | `[P]` | **Pause / Resume** | Freezes simulation timer and displays pause dialog. |
 | `[R]` | **Restart** | Instantly resets score, speed, obstacles, and player position. |
 | `[H]` | **Hitbox Visualizer** | **Lab Feature**: Toggles green (runner) and red (obstacles) collision boundary boxes. |
+| `[M]` | **Sound On / Off** | Toggles the gentle sound effects. |
+| Mouse | **Jump / Duck** | Left click = jump, hold right click = duck. |
 | `[ESC]` | **Exit** | Closes the OpenGL window gracefully. |
 
 ---
@@ -83,6 +85,17 @@ g++ -O2 -static -I"include" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -
 ./ChronoRun.exe
 ```
 *(If `g++` is not in your system PATH, use `"C:\Program Files\CodeBlocks\MinGW\bin\g++.exe"`)*.
+
+### Method D: Mobile / Browser Version (Android, iPhone, any browser)
+A Canvas/JavaScript port of the same game is in [`docs/index.html`](docs/index.html).
+- **On a PC**: just double-click `docs/index.html` to play in your browser.
+- **On a phone**: enable GitHub Pages (repo **Settings → Pages → Branch: `main`, folder: `/docs`**), then open
+  `https://ubaydafox.github.io/CG-IP-Project/` on your phone. Use **Share → Add to Home Screen** to install it like an app.
+- **Touch controls**: tap anywhere or the **JUMP** button to jump (hold for a higher jump), hold **DUCK** to duck,
+  plus on-screen **pause** and **sound** buttons at the top. Rotate to landscape for the best view.
+
+### Sound
+Gentle, soft sine-tone effects (jump, duck, every 100 points, game over). Press `[M]` (or the sound button on mobile) to mute.
 
 ---
 
