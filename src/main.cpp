@@ -662,6 +662,8 @@ void renderHUD() {
         drawStrC(WIN_W * 0.5f, 265.f, "Press SPACE to start", mono);
         setColor(tone(0.60f));
         drawStrC(WIN_W * 0.5f, 240.f, "Jump over cones, barriers & bollards  -  Duck under high drones", GLUT_BITMAP_8_BY_13);
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 200.f, "Made by - Ubayda & Rony", mono);
         setColor(tone(0.50f));
         drawStrC(WIN_W * 0.5f, 50.f, "Nahdiul Islam Rony (231-115-069)  &  Abu Ubayda (231-115-080)", GLUT_BITMAP_8_BY_13);
         drawStrC(WIN_W * 0.5f, 32.f, "CSE-402 CG & IP Lab  |  Lecturer: Shrabanti Chowdhury  |  Section B", GLUT_BITMAP_8_BY_13);
@@ -670,6 +672,7 @@ void renderHUD() {
         drawStrC(WIN_W * 0.5f, 280.f, "P A U S E D", GLUT_BITMAP_TIMES_ROMAN_24);
         setColor(tone(0.60f));
         drawStrC(WIN_W * 0.5f, 250.f, "Press P to resume", mono);
+        drawStrC(WIN_W * 0.5f, 215.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
     } else if (gState == STATE_GAME_OVER) {
         setColor(inkCol);
         drawStrC(WIN_W * 0.5f, 300.f, "G A M E   O V E R", GLUT_BITMAP_TIMES_ROMAN_24);
@@ -680,6 +683,8 @@ void renderHUD() {
             setColor(inkCol);
             drawStrC(WIN_W * 0.5f, 198.f, "NEW HIGH SCORE!", mono);
         }
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 172.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
     }
 }
 
@@ -873,7 +878,7 @@ int main(int argc, char** argv) {
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowSize(WIN_W, WIN_H);
     glutInitWindowPosition(100, 100);
-    glutCreateWindow("Chrono Run: DN Dash  |  CSE-402 CG & IP Lab");
+    glutCreateWindow("Chrono Run: DN Dash  |  Made by - Ubayda & Rony");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

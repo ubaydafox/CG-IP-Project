@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#f7f7f7">
-<title>Chrono Run: DN Dash</title>
+<title>Chrono Run: DN Dash | Made by - Ubayda & Rony</title>
 <style>
   html, body {
     margin: 0; height: 100%; overflow: hidden; background: #f7f7f7;
@@ -329,17 +329,20 @@ function renderHUD() {
     fill(inkCol);       text("CHRONO RUN : DN DASH", mid, 300, 30, "center", "Georgia, serif");
     fill(tone01(0.8));  text(isTouch ? "Tap to start" : "Press SPACE to start", mid, 265, 18, "center");
     fill(tone01(0.6));  text("Jump over cones, barriers & bollards  -  Duck under high drones", mid, 238, 13, "center");
+    fill(inkCol);       text("Made by - Ubayda & Rony", mid, 200, 16, "center");
     fill(tone01(0.5));
     text("Nahdiul Islam Rony (231-115-069)  &  Abu Ubayda (231-115-080)", mid, 50, 12, "center");
     text("CSE-402 CG & IP Lab  |  Lecturer: Shrabanti Chowdhury  |  Section B", mid, 32, 12, "center");
   } else if (state === "paused") {
     fill(inkCol);      text("P A U S E D", mid, 280, 28, "center", "Georgia, serif");
     fill(tone01(0.6)); text(isTouch ? "Tap to resume" : "Press P to resume", mid, 250, 16, "center");
+    fill(tone01(0.6)); text("Made by - Ubayda & Rony", mid, 215, 13, "center");
   } else if (state === "over") {
     fill(inkCol);      text("G A M E   O V E R", mid, 300, 28, "center", "Georgia, serif");
     drawRestartIcon(mid, 262);
     fill(tone01(0.6)); text(isTouch ? "Tap to restart" : "Press SPACE or R to restart", mid, 222, 16, "center");
     if ((score | 0) >= highScore && score > 5) { fill(inkCol); text("NEW HIGH SCORE!", mid, 198, 16, "center"); }
+    fill(tone01(0.6)); text("Made by - Ubayda & Rony", mid, 172, 13, "center");
   } else if (!isTouch) {
     fill(tone01(0.5));
     text("SPACE/UP jump   DOWN duck   P pause   R restart   H hitbox   M sound: " + (soundOn ? "on" : "off"), mid, 12, 12, "center");
