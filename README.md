@@ -34,7 +34,6 @@ The standout feature is a seamless, real-time day-night cycle spanning four dist
 | `[P]` | **Pause / Resume** | Freezes simulation timer and displays pause dialog. |
 | `[R]` | **Restart** | Instantly resets score, speed, obstacles, and player position. |
 | `[H]` | **Hitbox Visualizer** | **Lab Feature**: Toggles green (runner) and red (obstacles) collision boundary boxes. |
-| `[M]` | **Mute / Unmute** | Toggles multi-threaded arcade sound effects (Windows Beep). |
 | `[ESC]` | **Exit** | Closes the OpenGL window gracefully. |
 
 ---
