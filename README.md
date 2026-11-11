@@ -79,7 +79,7 @@ d:\CG&IP project\
 ### Method C: Command-Line Compilation (MinGW GCC)
 Open PowerShell or Command Prompt in the project folder and run:
 ```bash
-g++ -O2 -static -I"include" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -o ChronoRun.exe
+g++ -O2 -static -I"include" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -lwinmm -o ChronoRun.exe
 ./ChronoRun.exe
 ```
 *(If `g++` is not in your system PATH, use `"C:\Program Files\CodeBlocks\MinGW\bin\g++.exe"`)*.

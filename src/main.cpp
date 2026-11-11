@@ -29,9 +29,13 @@
 */
 
 #define _USE_MATH_DEFINES
+#define NOMINMAX
+#include <windows.h>
+#include <mmsystem.h>     // PlaySound (link with -lwinmm)
 #include <GL/glut.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -222,6 +226,65 @@ std::vector<Star>     stars;
 std::vector<Building> farB, nearB;
 
 float frand(float a, float b) { return a + (b - a) * (rand() % 10000) / 10000.f; }
+
+// ============================================================================
+// Gentle sound effects
+// Soft sine tones are synthesised into in-memory WAV buffers at startup and
+// played asynchronously with PlaySound. Each tone has a short fade-in and a
+// smooth fade-out, so nothing clicks or beeps harshly. Only one sound plays at
+// a time (a new sound replaces the old), so effects never pile up.
+// ============================================================================
+struct Tone { float f0, f1, dur, delay, vol; };
+std::vector<char> sndJump, sndDuck, sndScore, sndOver;
+bool soundOn = true;
+
+std::vector<char> synthWav(const std::vector<Tone>& tones) {
+    const int SR = 22050;
+    float total = 0.f;
+    for (const auto& t : tones) total = std::max(total, t.delay + t.dur);
+    int N = (int)(total * SR) + 64;
+    std::vector<float> mix(N, 0.f);
+
+    for (const auto& t : tones) {
+        int s0 = (int)(t.delay * SR), len = (int)(t.dur * SR);
+        double ph = 0.0;
+        for (int i = 0; i < len && s0 + i < N; ++i) {
+            float u   = (float)i / len;
+            float f   = t.f0 * powf(t.f1 / t.f0, u);            // smooth pitch glide
+            ph       += 2.0 * M_PI * f / SR;
+            float att = std::min(1.f, i / (0.012f * SR));        // 12 ms fade-in
+            float env = att * (1.f - u) * (1.f - u);             // soft fade-out
+            mix[s0 + i] += (float)(sin(ph) * 0.85 + sin(2.0 * ph) * 0.15) * env * t.vol;
+        }
+    }
+
+    std::vector<char> wav(44 + N * 2);
+    auto w32 = [&](int off, uint32_t v) { memcpy(&wav[off], &v, 4); };
+    auto w16 = [&](int off, uint16_t v) { memcpy(&wav[off], &v, 2); };
+    memcpy(&wav[0], "RIFF", 4); w32(4, 36 + N * 2); memcpy(&wav[8], "WAVEfmt ", 8);
+    w32(16, 16); w16(20, 1); w16(22, 1); w32(24, SR); w32(28, SR * 2); w16(32, 2); w16(34, 16);
+    memcpy(&wav[36], "data", 4); w32(40, N * 2);
+    for (int i = 0; i < N; ++i) {
+        float s = std::max(-1.f, std::min(1.f, mix[i]));
+        int16_t v = (int16_t)(s * 32767.f);
+        memcpy(&wav[44 + i * 2], &v, 2);
+    }
+    return wav;
+}
+
+void initSounds() {
+    sndJump  = synthWav({ { 520.f, 720.f, 0.11f, 0.00f, 0.28f } });
+    sndDuck  = synthWav({ { 320.f, 240.f, 0.07f, 0.00f, 0.18f } });
+    sndScore = synthWav({ { 660.f, 660.f, 0.14f, 0.00f, 0.22f },
+                          { 880.f, 880.f, 0.24f, 0.11f, 0.22f } });
+    sndOver  = synthWav({ { 440.f, 330.f, 0.25f, 0.00f, 0.26f },
+                          { 330.f, 247.f, 0.40f, 0.20f, 0.24f } });
+}
+
+void playSnd(const std::vector<char>& w) {
+    if (soundOn && !w.empty())
+        PlaySoundA(w.data(), NULL, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+}
 
 // ============================================================================
 // Drawing primitives
@@ -588,7 +651,8 @@ void renderHUD() {
     // Bottom help line
     setColor(tone(0.50f));
     if (gState != STATE_START)
-        drawStrC(WIN_W * 0.5f, 14.f, "SPACE/UP jump    DOWN duck    P pause    R restart    H hitbox    ESC quit",
+        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   P pause   R restart   H hitbox   M sound: ")
+                 + (soundOn ? "on" : "off") + "   ESC quit",
                  GLUT_BITMAP_8_BY_13);
 
     if (gState == STATE_START) {
@@ -687,7 +751,7 @@ void updateGame(float dt) {
     gameSpeed = BASE_SPEED + score * SPEED_RAMP;
     if (gameSpeed > MAX_SPEED) gameSpeed = MAX_SPEED;
 
-    if ((int)score / 100 > lastMile) { lastMile = (int)score / 100; blinkTimer = 1.2f; }
+    if ((int)score / 100 > lastMile) { lastMile = (int)score / 100; blinkTimer = 1.2f; playSnd(sndScore); }
     if (blinkTimer > 0.f) blinkTimer -= dt / 60.f;
 
     // Jump physics (holding DOWN in the air = fast fall)
@@ -717,6 +781,7 @@ void updateGame(float dt) {
         obstacles[i].anim += dt / 60.f;
         if (aabbCollide(rb, obstBox(obstacles[i]))) {
             gState = STATE_GAME_OVER;
+            playSnd(sndOver);
             for (int k = 0; k < 14; ++k)
                 particles.push_back({ rX + 30.f, rY + 40.f, frand(-3, 3), frand(-1, 4), 1.f, frand(0.02f, 0.04f), frand(3, 5) });
             break;
@@ -749,7 +814,17 @@ void timerCB(int) {
 void doJump() {
     if (gState == STATE_START)     { resetGame(); return; }
     if (gState == STATE_GAME_OVER) { resetGame(); return; }
-    if (gState == STATE_PLAYING && grounded) { rVY = JUMP_FORCE; grounded = false; }
+    if (gState == STATE_PLAYING && grounded) { rVY = JUMP_FORCE; grounded = false; playSnd(sndJump); }
+}
+
+void startDuck() {
+    if (gState != STATE_PLAYING) return;
+    if (!ducking && grounded) playSnd(sndDuck);
+    ducking = true;
+}
+
+void releaseJump() {
+    if (!grounded && rVY > 4.f) rVY *= 0.55f;   // variable jump height
 }
 
 void keyDown(unsigned char k, int, int) {
@@ -762,17 +837,26 @@ void keyDown(unsigned char k, int, int) {
     }
     if (k == 'r' || k == 'R') { resetGame(); return; }
     if (k == 'h' || k == 'H') { showHB = !showHB; return; }
+    if (k == 'm' || k == 'M') { soundOn = !soundOn; if (!soundOn) PlaySoundA(NULL, NULL, 0); return; }
 }
 void keyUp(unsigned char k, int, int) {
-    if (k == ' ' && !grounded && rVY > 4.f) rVY *= 0.55f;   // variable jump height
+    if (k == ' ') releaseJump();
 }
 void specialDown(int k, int, int) {
     if (k == GLUT_KEY_UP) doJump();
-    else if (k == GLUT_KEY_DOWN && gState == STATE_PLAYING) ducking = true;
+    else if (k == GLUT_KEY_DOWN) startDuck();
 }
 void specialUp(int k, int, int) {
     if (k == GLUT_KEY_DOWN) ducking = false;
-    if (k == GLUT_KEY_UP && !grounded && rVY > 4.f) rVY *= 0.55f;
+    if (k == GLUT_KEY_UP) releaseJump();
+}
+// Mouse / touchscreen laptop: left click = jump, right click (hold) = duck
+void mouseCB(int button, int st, int, int) {
+    if (button == GLUT_LEFT_BUTTON) {
+        if (st == GLUT_DOWN) doJump(); else releaseJump();
+    } else if (button == GLUT_RIGHT_BUTTON) {
+        if (st == GLUT_DOWN) startDuck(); else ducking = false;
+    }
 }
 
 void reshape(int w, int h) {
@@ -796,10 +880,12 @@ int main(int argc, char** argv) {
     glutIgnoreKeyRepeat(1);
 
     initWorld();
+    initSounds();
     lastTime = glutGet(GLUT_ELAPSED_TIME);
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
+    glutMouseFunc(mouseCB);
     glutKeyboardFunc(keyDown);
     glutKeyboardUpFunc(keyUp);
     glutSpecialFunc(specialDown);
@@ -808,7 +894,8 @@ int main(int argc, char** argv) {
 
     std::cout << "CHRONO RUN: DN DASH v3.0 - CSE-402 CG & IP Lab\n"
               << "Nahdiul Islam Rony (231-115-069) & Abu Ubayda (231-115-080)\n"
-              << "Controls: SPACE/UP jump | DOWN duck | P pause | R restart | H hitbox | ESC quit\n";
+              << "Controls: SPACE/UP jump | DOWN duck | P pause | R restart | H hitbox | M sound | ESC quit\n"
+              << "Mouse:    left click jump | right click (hold) duck\n";
 
     glutMainLoop();
     return 0;

@@ -24,7 +24,7 @@ if %ERRORLEVEL% neq 0 (
 echo Using compiler: %COMPILER%
 echo Compiling src/main.cpp...
 
-%COMPILER% -O2 -static -I"include" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -o ChronoRun.exe
+%COMPILER% -O2 -static -I"include" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -lwinmm -o ChronoRun.exe
 
 if %ERRORLEVEL% equ 0 (
     echo.

@@ -21,6 +21,7 @@
 					<Add library="freeglut" />
 					<Add library="opengl32" />
 					<Add library="glu32" />
+					<Add library="winmm" />
 					<Add directory="lib" />
 				</Linker>
 			</Target>
@@ -40,6 +41,7 @@
 					<Add library="freeglut" />
 					<Add library="opengl32" />
 					<Add library="glu32" />
+					<Add library="winmm" />
 					<Add directory="lib" />
 				</Linker>
 			</Target>
@@ -53,6 +55,7 @@
 			<Add library="freeglut" />
 			<Add library="opengl32" />
 			<Add library="glu32" />
+			<Add library="winmm" />
 			<Add directory="lib" />
 		</Linker>
 		<Unit filename="src/main.cpp" />
