@@ -17,11 +17,11 @@
 **Chrono Run: DN Dash** is a high-performance 2D endless runner desktop game developed in **C++** using **OpenGL** and **FreeGLUT**. Inspired by retro endless runners like the Chrome Dino game, the project demonstrates core computer graphics concepts such as 2D orthographic projection, vector primitive modeling, multi-layer parallax depth scrolling, frame-rate-independent physics, linear color interpolation (`lerp`), and Axis-Aligned Bounding Box (AABB) collision detection.
 
 ### Unique Feature: Dynamic Day-Night Cycle
-The standout feature is a seamless, real-time day-night cycle spanning four distinct atmospheric phases:
-1. **Dawn (0–10s)**: Soft pink and coral horizon, rising golden Sun, fading morning stars, and warming ambient lighting.
-2. **Midday (10–20s)**: Vibrant azure blue sky, radiant Sun with animated rotating solar rays, and drifting fluffy vector clouds.
-3. **Sunset (20–30s)**: Deep crimson and violet dusk gradients, sinking Sun casting warm red tints across the desert terrain.
-4. **Starry Night (30–40s)**: Deep midnight navy sky, full glowing Moon with crater details, and 80+ twinkling stars modulated by sine-wave functions.
+The standout feature is a seamless, real-time 2.5-minute day-night cycle spanning four atmospheric phases:
+1. **Dawn (0–20s)**: Warm morning glow with rising sun.
+2. **Day (20–70s)**: Clean, high-contrast daylight with distant city skyline.
+3. **Dusk (70–90s)**: Golden hour sunset transition.
+4. **Starry Night (94–146s)**: High-contrast midnight sky with glowing crescent moon, lit city windows, and twinkling stars. The character and obstacle silhouettes automatically invert color for crystal-clear visibility.
 
 ---
 
@@ -30,12 +30,11 @@ The standout feature is a seamless, real-time day-night cycle spanning four dist
 | Key / Control | In-Game Action | Mechanics & Description |
 | :--- | :--- | :--- |
 | `[SPACEBAR]` or `[UP ARROW]` | **Jump** | Variable-height jump. Tap for short hop; hold for full jump apex. |
-| `[DOWN ARROW]` | **Duck / Slide** | Low slide crouch. Compresses hitbox to slide under high drones. |
-| `[T]` | **Dynamic Theme** | **New Feature**: Switches between 5 funny dinosaur themes (Cyan Raptor, Jurassic Green, Crimson Blaze, Neon Cyber, Obsidian Gold). |
+| `[DOWN ARROW]` | **Duck / Slide** | Low slide crouch. Compresses hitbox to slide under high drones. (Also fast-fall in mid-air). |
 | `[P]` | **Pause / Resume** | Freezes simulation timer and displays pause dialog. |
 | `[R]` | **Restart** | Instantly resets score, speed, obstacles, and player position. |
 | `[H]` | **Hitbox Visualizer** | **Lab Feature**: Toggles green (runner) and red (obstacles) collision boundary boxes. |
-| `[M]` | **Sound On / Off** | Toggles the gentle sound effects. |
+| `[M]` | **Sound On / Off** | Toggles the gentle synthesized sound effects. |
 | Mouse | **Jump / Duck** | Left click = jump, hold right click = duck. |
 | `[ESC]` | **Exit** | Closes the OpenGL window gracefully. |
 
@@ -46,6 +45,8 @@ The standout feature is a seamless, real-time day-night cycle spanning four dist
 d:\CG&IP project\
 ├── src\
 │   └── main.cpp           # Complete, well-documented C++ OpenGL game source code
+├── docs\
+│   └── index.html         # HTML5 Canvas / Web mobile version (GitHub Pages)
 ├── include\
 │   └── GL\
 │       ├── freeglut.h     # FreeGLUT API header
@@ -59,9 +60,9 @@ d:\CG&IP project\
 ├── ChronoRun.cbp          # Ready-to-open Code::Blocks Project File
 ├── build.bat              # One-click command-line build script using MinGW g++
 ├── run.bat                # One-click game launcher script
-├── generate_slides.py     # Python script to generate the presentation slide deck
+├── generate_slides.py     # Python script to generate presentation slides
 ├── Chrono_Run_DN_Dash_Presentation.pptx # Final Presentation Slides (PPT)
-├── PROGRESS_UPDATE.md     # Progress report & talking points for Nov 8 milestone
+├── PROGRESS_UPDATE.md     # Progress report & talking points
 └── README.md              # Project documentation and run instructions
 ```
 
@@ -103,25 +104,23 @@ Gentle, soft sine-tone effects (jump, duck, every 100 points, game over). Press 
 ## 5. Computer Graphics Concepts Implemented (For Lab Evaluation)
 
 1. **2D Orthographic Projection**:  
-   Set up via `gluOrtho2D(0.0, 1000.0, 0.0, 600.0)` in the reshape callback to create a 1:1 pixel coordinate system.
-2. **Vector Primitive Modeling**:  
-   Character, terrain, celestial bodies, and obstacles are drawn purely with vector primitives:
-   - `GL_QUADS`: Ground base, torso, visor, cacti trunks, building blocks.
-   - `GL_TRIANGLE_FAN`: Sun, Moon, head, craters, cloud puffs, dust particles.
-   - `GL_LINES`: Sun rays, star twinkling, ground surface line, grass blades.
-   - `GL_POLYGON` & `GL_TRIANGLES`: Jagged boulders, headband streamers, flapping bird wings.
-3. **Linear Color Interpolation (`lerp`)**:  
-   Computes $C(t) = C_1 + (C_2 - C_1) \times t$ across daytime keyframe palettes to blend sky colors and environmental tinting every frame without visual banding.
+   Set up via `gluOrtho2D(0.0, 1000.0, 0.0, 450.0)` in the reshape callback to create a 1:1 pixel coordinate system.
+2. **Pixel-Art Sprite Rendering & Vector Modeling**:  
+   - Raster pixel-art sprite rendering using `GL_QUADS` for the runner character (run cycle, jump, duck).
+   - Flat vector silhouette modeling for city obstacles (traffic cones with reflective bands, road barriers, bollards, delivery drones).
+   - Thin ground line, pavement dashes, road bumps, and stylized celestial bodies (Sun, Moon, twinkling stars).
+3. **Linear Color Interpolation (`lerp`) & Day-Night Cycle**:  
+   Computes $C(t) = C_1 + (C_2 - C_1) \times t$ across atmospheric phases (Dawn, Day, Dusk, Night) with high-contrast color inversion for maximum visibility.
 4. **Multi-Layer Parallax Scrolling**:  
-   Simulates 3D depth on a 2D plane by scrolling background layers at varied rates:
-   - Distant Mountains: $0.12 \times \text{Speed}$
-   - Near Hills: $0.35 \times \text{Speed}$
-   - Floating Clouds: $0.50 \times \text{Speed}$
-   - Ground Terrain: $1.00 \times \text{Speed}$
-5. **Double Buffering & 60 FPS Fixed Time-step**:  
-   Configured using `GLUT_DOUBLE | GLUT_RGB` and `glutTimerFunc(16, ...)` to ensure tear-free, smooth rendering.
+   Simulates 2D depth by scrolling skyline and environment layers at varied rates:
+   - Far City Skyline: $0.10 \times \text{Speed}$
+   - Near City Skyline: $0.25 \times \text{Speed}$
+   - Drifting Clouds: Gentle horizontal drift
+   - Ground & Obstacles: $1.00 \times \text{Speed}$
+5. **Double Buffering & Delta-Time Physics**:  
+   Configured using `GLUT_DOUBLE | GLUT_RGB` with frame-rate-independent delta-time updates for smooth, consistent gameplay across all monitor refresh rates.
 6. **Alpha Blending & Particle Physics**:  
-   Enabled via `glEnable(GL_BLEND)` with `glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)` for translucent HUD ribbons, dust bursts on footfalls/landing, and radial crash explosions.
+   Enabled via `glEnable(GL_BLEND)` with `glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)` for dust puffs on footfalls/landing and crash particles.
 7. **Axis-Aligned Bounding Box (AABB) Collision Detection**:  
    Real-time mathematical intersection checks with calibrated hitboxes. Pressing `[H]` reveals debug collision frames live.
 

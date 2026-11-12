@@ -22,8 +22,8 @@ Before entering the lab:
    - Point out the sky color transition: *"Notice how the background sky smoothly transitions from dawn into midday, then into a deep sunset, and finally into a starry night over 40 seconds using RGB linear color interpolation."*
    - Point out the celestial bodies: *"The Sun follows a circular arc across the sky with rotating rays, and the Moon with craters rises at night alongside 80+ twinkling stars."*
 2. **Jump & Ducking Physics**:
-   - Press `[SPACE]` to jump over cacti and boulders: *"We implemented realistic jump velocity and gravity deceleration. If we tap lightly, the jump is short; if we hold, it reaches full height."*
-   - Press `[DOWN]` to duck: *"When low or high-flying pterodactyls appear, we can duck down into a low slide pose with reduced hitbox height."*
+   - Press `[SPACE]` to jump over cones, barriers and bollards: *"We implemented realistic jump velocity and gravity deceleration. If we tap lightly, the jump is short; if we hold, it reaches full height."*
+   - Press `[DOWN]` to duck: *"When high-flying delivery drones appear, we can duck down into a low slide pose with reduced hitbox height, or fast-fall in mid-air."*
 3. **Collision Detection & Hitbox Debugger**:
    - **Press `[H]` to show hitboxes!**: *"Ma'am, we added an interactive debug visualizer by pressing 'H'. The green box is our player hitbox and red boxes are obstacle hitboxes. We use Axis-Aligned Bounding Box (AABB) intersection mathematics to detect collisions."*
 4. **Scoring, Difficulty Scaling & Sound**:

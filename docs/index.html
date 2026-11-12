@@ -41,219 +41,29 @@ const JUMP_FORCE = 12.5, GRAVITY = 0.55;
 const CYCLE = 150, DAY_END = 90, FADE = 4, NIGHT_END = 146;
 
 // ---------------------------------------------------------------- sprites
-const DINO_RUN_A = [
-  "................................................BB.........",
-  "...............................................BBBBB.......",
-  ".............................................BBBBBBBBBB....",
-  ".......BBBBB................................BBBBBBKBBBBB...",
-  "...BBBBBBBBBBB.............................BBBBBBBBBBBBBBB.",
-  "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
-  "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
-  "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
-  "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
-  "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
-  "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
-  ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
-  "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
-  ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
-  "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
-  "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
-  "............................YYYYYBBBBBYBBBB.BBBB..........",
-  "............................YYYYYYYBBBBBBBB....BBB........",
-  "...............................YYYBBBBBBBB......BBBB......",
-  "..............................YYYBBBBBBBBB........BB......",
-  "............................YYYYBBBBBBBBB........BB.......",
-  "............................YYYBBBBBBBBB..................",
-  "............................YYBB..BBBBBBB.................",
-  "...........................YYBB....BBBBBBB.................",
-  "..........................YYBB.......BBBBB.................",
-  ".........................YYBB.........BBBBB................",
-  "........................YYBB...........BBBBB...............",
-  "........................YYB.............BBBB...............",
-  ".........................YB..............BBB...............",
-  ".........................BB...............BBB..............",
-  ".........................BB...............BBBBB............",
-  ".........................BBBB..............BBBB............",
-  ".........................BBBBB............................."
-];
-
-const DINO_RUN_B = [
-  "................................................BB.........",
-  "...............................................BBBBB.......",
-  ".............................................BBBBBBBBBB....",
-  "....BBBBBB..................................BBBBBBKBBBBB...",
-  "..BBBBBBBBBB...............................BBBBBBBBBBBBBBB.",
-  "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
-  "....BBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
-  "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
-  "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
-  "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
-  "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
-  ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
-  "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
-  ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
-  "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
-  "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
-  "............................YYYYYBBBBBYBBBB.BBBB..........",
-  "............................YYYYYYYBBBBBBBB....BBB........",
-  "...............................YYYBBBBBBBB......BBBB......",
-  "..............................YYYBBBBBBBBB........BB......",
-  "............................YYYYBBBBBBBBB........BB.......",
-  "............................YYYBBBBBBBBB..................",
-  "............................YYBB..BBBBBBB..................",
-  "...........................YYBB....BBBBBBB.................",
-  "..........................YYBB......BBBBBB.................",
-  ".........................YYBB........BBBBBB................",
-  "........................YYBB..........BBBBB................",
-  ".......................YYBBB...........BBBB................",
-  "......................YYBB..............BBB................",
-  ".....................YYBB................BBB...............",
-  "....................YYBB.................BBBB..............",
-  "..........................................BBBBB............",
-  "..........................................BBBBBB..........."
-];
-
-const DINO_JUMP = [
-  "................................................BB.........",
-  "...............................................BBBBB.......",
-  ".............................................BBBBBBBBBB....",
-  ".......BBBBB................................BBBBBBKBBBBB...",
-  "...BBBBBBBBBBB.............................BBBBBBBBBBBBBBB.",
-  "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
-  "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
-  "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
-  "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
-  "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
-  "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
-  ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
-  "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
-  ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
-  "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
-  "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
-  "............................YYYYYBBBBBYBBBB.BBBB..........",
-  "............................YYYYYYYBBBBBBBB....BBB........",
-  "...............................YYYBBBBBBBB......BBBB......",
-  "..............................YYYBBBBBBBBB........BB......",
-  "............................YYYYBBBBBBBBB........BB.......",
-  "............................YYYBBBBBBBBB..................",
-  "............................YYBB..BBBBBBB..................",
-  "...........................YYBB....BBBBBBB.................",
-  "..........................YYBB......BBBBB..................",
-  ".........................YYBB........BBBBB.................",
-  ".......................YYYYBB.........BBBB.................",
-  ".....................YYYYYBB...........BBB.................",
-  "...................YYYYYBB.............BBB.................",
-  "...........................................................",
-  "...........................................................",
-  "...........................................................",
-  "..........................................................."
-];
-
-const DINO_CRASH = [
-  "................................................BB.........",
-  "...............................................BBBBB.......",
-  ".............................................BBBBBBBBBB....",
-  ".......BBBBB................................BBBBBK.KBBBB...",
-  "...BBBBBBBBBBB.............................BBBBBB.K.BBBBBB.",
-  "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBK.KBBBBBB.",
-  "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKK..KK.",
-  "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYKKKKYY..",
-  "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
-  "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
-  "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
-  "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
-  "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
-  ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
-  "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
-  ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
-  "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
-  "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
-  "............................YYYYYBBBBBYBBBB.BBBB..........",
-  "............................YYYYYYYBBBBBBBB....BBB........",
-  "...............................YYYBBBBBBBB......BBBB......",
-  "..............................YYYBBBBBBBBB........BB......",
-  "............................YYYYBBBBBBBBB........BB.......",
-  "............................YYYBBBBBBBBB..................",
-  "............................YYBB..BBBBBBB.................",
-  "...........................YYBB....BBBBBBB.................",
-  "..........................YYBB.......BBBBB.................",
-  ".........................YYBB.........BBBBB................",
-  "........................YYBB...........BBBBB...............",
-  "........................YYB.............BBBB...............",
-  ".........................YB..............BBB...............",
-  ".........................BB...............BBB..............",
-  ".........................BB...............BBBBB............",
-  ".........................BBBB..............BBBB............",
-  ".........................BBBBB............................."
-];
-
-const DINO_DUCK_A = [
-  "............................................................",
-  "............................................................",
-  "............................................................",
-  "...................................................BBBBB....",
-  ".................................................BBBBBBBB...",
-  "................................................BBBBBKBBBB..",
-  "BBBBBBBBBBBBBBBBBB.............................BBBBBBBBBBBB.",
-  ".BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBKKKKK..",
-  "..YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYY...",
-  "...YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYBBBBBYYYYY....",
-  ".....YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYBBBB.........",
-  ".......YYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYBBB..BB.......",
-  "..........YYYYYYYYYYBBBBBBBBBBBBBBBBBBYYYYYYYBBB....BB......",
-  ".............YYYYYYYYYYBBBBBBBBBBBBBYYYBBYBBBB..............",
-  "................YYYYYYYYYYBBBBBBBBBYBBBB..BBBB..............",
-  "...................YYBB...BBBBBBBB........BBBB..............",
-  "..................YYBB.....BBBBBBB........BBBB..............",
-  "..................YYBB......BBBB............BB..............",
-  ".................YYBBB......................BBB............."
-];
-
-const DINO_DUCK_B = [
-  "............................................................",
-  "............................................................",
-  "............................................................",
-  "...................................................BBBBB....",
-  ".................................................BBBBBBBB...",
-  "................................................BBBBBKBBBB..",
-  "BBBBBBBBBBBBBBBBBB.............................BBBBBBBBBBBB.",
-  ".BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBKKKKK..",
-  "..YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYY...",
-  "...YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYBBBBBYYYYY....",
-  ".....YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYBBBB.........",
-  ".......YYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYBBB..BB.......",
-  "..........YYYYYYYYYYBBBBBBBBBBBBBBBBBBYYYYYYYBBB....BB......",
-  ".............YYYYYYYYYYBBBBBBBBBBBBBYYYBBYBBBB..............",
-  "................YYYYYYYYYYBBBBBBBBBYBBBB..BBBB..............",
-  "....................YYBB....BBBBBBB........BBBB.............",
-  "...................YYBB......BBBBBB.........BBBB............",
-  "....................YYBB......BBBB............BB............",
-  ".....................YYBBB....................BBB..........."
-];
-
-const THEMES = [
-  { name: "CYAN RAPTOR",    body: [0.00, 0.62, 0.88], belly: [1.00, 0.80, 0.00], eye: [0.10, 0.12, 0.16] },
-  { name: "JURASSIC GREEN", body: [0.06, 0.72, 0.50], belly: [0.99, 0.88, 0.28], eye: [0.10, 0.12, 0.16] },
-  { name: "CRIMSON BLAZE",  body: [0.94, 0.27, 0.27], belly: [0.98, 0.45, 0.09], eye: [0.10, 0.12, 0.16] },
-  { name: "NEON CYBER",     body: [0.66, 0.33, 0.97], belly: [0.93, 0.28, 0.60], eye: [0.10, 0.12, 0.16] },
-  { name: "OBSIDIAN GOLD",  body: [0.24, 0.28, 0.35], belly: [0.96, 0.62, 0.04], eye: [0.90, 0.20, 0.20] }
-];
-let currentTheme = 0;
-function cycleTheme() { currentTheme = (currentTheme + 1) % THEMES.length; }
+const RUN_A = [
+  ".......####...","......######..","......####.#..","......######..",".......####...",
+  "........##....","......#####...",".....#######..","....##.###.##.","...##..###..##",
+  "..##...###....",".......###....","......#####...",".....##...##..","....##.....##.",
+  "...##.......##","..##........##",".###........##"];
+const RUN_B = [
+  ".......####...","......######..","......####.#..","......######..",".......####...",
+  "........##....","......#####...",".....#######..",".....#.###.#..",".....#.###.#..",
+  ".....#.###.#..",".......###....",".......####...",".......##.##..",".......##..##.",
+  ".......##.#...",".......##.....",".......###...."];
+const JUMP_S = [
+  ".......####...","......######..","......####.#..","......######..",".......####...",
+  "........##....","......#####...",".....#######..","....##.###.##.","...##..###..##",
+  ".......###....",".......###....","......#####...",".....##..###..","....##.....##.",
+  "...##.....##..","..............",".............."];
+const DUCK_A = [
+  "............####..","...........######.","...........####.#.","..##########.####.",
+  ".############.....","##..########......","......##..##......",".....##....##.....",
+  "....##......##....","...###......###..."];
+const DUCK_B = [
+  "............####..","...........######.","...........####.#.","..##########.####.",
+  ".############.....","##..########......","......##.##.......","......##.##.......",
+  "......##..##......",".....###..###....."];
 
 
 // ---------------------------------------------------------------- helpers
@@ -442,43 +252,12 @@ function renderGround() {
   fill(tone01(0.75)); for (const d of dashes) rect(d.x, d.y, d.w, 2);
 }
 
-function drawDinoSprite(rows, x, y, pxSize, colBody, colBelly, colEye) {
-  const n = rows.length;
-  for (let r = 0; r < n; ++r) {
-    const row = rows[r];
-    const yy = y + (n - 1 - r) * pxSize;
-    for (let c = 0; c < row.length; ++c) {
-      const ch = row[c];
-      if (ch === '.') continue;
-      if (ch === 'B') ctx.fillStyle = css(colBody);
-      else if (ch === 'Y') ctx.fillStyle = css(colBelly);
-      else if (ch === 'K') ctx.fillStyle = css(colEye);
-      else if (ch === 'W') ctx.fillStyle = '#ffffff';
-      else ctx.fillStyle = css(colBody);
-      ctx.fillRect(Math.round(x + c * pxSize), Math.round(H - (yy + pxSize)), pxSize, pxSize);
-    }
-  }
-}
-
 function renderRunner() {
+  fill(inkCol);
   const f = state === "start" ? 0 : ((runAnim | 0) % 2);
-  const th = THEMES[currentTheme];
-  let curBody = th.body, curBelly = th.belly, curEye = th.eye;
-  if (nightF > 0.01) {
-    const nightBody = lerp(th.body, [0.2, 0.8, 1.0], 0.25);
-    curBody  = lerp(th.body, nightBody, nightF);
-    curBelly = lerp(th.belly, [1.0, 0.95, 0.5], nightF * 0.4);
-    curEye   = lerp(th.eye, [0.95, 0.95, 0.95], nightF);
-  }
-  if (state === "over") {
-    drawDinoSprite(DINO_CRASH, rX, rY, 2, curBody, curBelly, curEye);
-  } else if (ducking && grounded) {
-    drawDinoSprite(f ? DINO_DUCK_B : DINO_DUCK_A, rX, rY, 2, curBody, curBelly, curEye);
-  } else if (!grounded) {
-    drawDinoSprite(DINO_JUMP, rX, rY, 2, curBody, curBelly, curEye);
-  } else {
-    drawDinoSprite(f ? DINO_RUN_B : DINO_RUN_A, rX, rY, 2, curBody, curBelly, curEye);
-  }
+  if (ducking && grounded) sprite(f ? DUCK_B : DUCK_A, rX, rY);
+  else if (!grounded)      sprite(JUMP_S, rX, rY);
+  else                     sprite(f ? RUN_B : RUN_A, rX, rY);
 }
 
 function drawCone(ox) {
@@ -522,7 +301,7 @@ function renderObstacles() {
 
 function renderParticles() { for (const p of particles) { fill(tone01(p.life * 0.8)); rect(p.x, p.y, p.size, p.size); } }
 
-const runnerBox = () => (ducking && grounded) ? { x: rX + 16, y: rY, w: 78, h: 36 } : { x: rX + 38, y: rY, w: 48, h: 68 };
+const runnerBox = () => (ducking && grounded) ? { x: rX + 4, y: rY, w: 64, h: 38 } : { x: rX + 12, y: rY, w: 36, h: 68 };
 const obstBox = o => ({ x: o.x + 4, y: o.y, w: o.w - 8, h: o.h - 2 });
 
 function renderHitboxes() {
@@ -584,7 +363,6 @@ function layoutButtons() {
     jump:  { x: cv.width - pad - r,  y: by, r, label: "JUMP" },
     pause: { x: cv.width / 2 - s * 1.4, y: pad + s, r: s, label: state === "paused" ? ">" : "II" },
     sound: { x: cv.width / 2 + s * 1.4, y: pad + s, r: s, label: soundOn ? "SND" : "OFF" },
-    skin:  { x: cv.width / 2 + s * 3.8, y: pad + s, r: s, label: "SKIN" },
   };
 }
 function renderButtons() {
@@ -708,7 +486,6 @@ addEventListener("keydown", e => {
   else if (k === "r" || k === "R") { ensureAudio(); resetGame(); }
   else if (k === "h" || k === "H") showHB = !showHB;
   else if (k === "m" || k === "M") toggleSound();
-  else if (k === "t" || k === "T") cycleTheme();
 });
 addEventListener("keyup", e => {
   if (e.key === " " || e.key === "ArrowUp") releaseJump();
@@ -732,7 +509,6 @@ cv.addEventListener("touchstart", e => {
     const x = t.clientX * dpr, y = t.clientY * dpr;
     if (hit(buttons.pause, x, y)) { togglePause(); continue; }
     if (hit(buttons.sound, x, y)) { toggleSound(); continue; }
-    if (hit(buttons.skin,  x, y)) { cycleTheme(); continue; }
     if (state === "playing" && hit(buttons.duck, x, y)) { duckTouch = t.identifier; startDuck(); continue; }
     if (state === "start") tryFullscreenLandscape();
     jumpTouch = t.identifier; doJump();

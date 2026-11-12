@@ -32,9 +32,9 @@ You don't need any special software to record your demo video on Windows 10/11:
 
 - **0:25 - 1:00 | Controls & Gameplay**:
   - Press `[SPACE]` to start running.
-  - Demonstrate standard jumping over cacti and boulders.
-  - Demonstrate ducking with `[DOWN ARROW]` when high-flying pterodactyls appear.
-  - Mention variable jump height and particle effects on footfalls and landing.
+  - Demonstrate standard jumping over traffic cones, road barriers, and bollards.
+  - Demonstrate ducking with `[DOWN ARROW]` when high-flying delivery drones appear.
+  - Mention variable jump height (short hop vs high jump) and dust particle effects.
 
 - **1:00 - 1:40 | Dynamic Day-Night Cycle**:
   - Point out the sky changing from Dawn to bright Day, into Sunset, and then starry Night.
