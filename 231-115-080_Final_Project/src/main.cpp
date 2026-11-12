@@ -1,6 +1,6 @@
 /*
  ============================================================================
-  Project Title : CHRONO RUN: DN DASH
+  Project Title : CHRONO RUN: DN DASH  (v3.0 - Minimal City Edition)
   Course        : Computer Graphics & Image Processing Lab (CSE-402)
   Institution   : Metropolitan University, Sylhet
   Lecturer      : Shrabanti Chowdhury
@@ -11,1426 +11,1093 @@
   Section       : B, 58th Batch, Dept. of CSE
 
   Description   :
-    An interactive 2D endless runner desktop game built with C++, OpenGL,
-    and FreeGLUT. Features a seamless dynamic day-night cycle, parallax
-    background scrolling, realistic jump physics, ducking mechanics,
-    procedurally spawned ground & aerial obstacles, AABB collision detection,
-    particle effects, sound feedback, and comprehensive HUD score tracking.
+    A clean, minimal 2D endless runner built with C++, OpenGL and FreeGLUT.
+    Visual style is inspired by the Chrome offline runner: a high-contrast
+    pixel-art character on a light background, a thin ground line, faint
+    clouds and a faint modern city skyline.
+
+    Graphics concepts demonstrated:
+      - 2D orthographic projection (gluOrtho2D)
+      - Raster pixel-art sprite rendering using GL_QUADS (bitmap -> quads)
+      - Frame-based sprite animation (run cycle, jump, duck)
+      - Linear colour interpolation (lerp) for the day-night cycle
+      - Colour inversion at night (light ink on dark sky) for contrast
+      - Multi-layer parallax scrolling (skyline far/near, clouds, ground)
+      - Delta-time (frame-rate independent) physics and movement
+      - AABB collision detection with live hitbox debugger [H]
  ============================================================================
 */
 
 #define _USE_MATH_DEFINES
+#define NOMINMAX
+#include <windows.h>
+#include <mmsystem.h>     // PlaySound (link with -lwinmm)
 #include <GL/glut.h>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <iostream>
 #include <vector>
 #include <string>
 #include <sstream>
 #include <iomanip>
-#include <thread>
-#include <windows.h>
 
-// -----------------------------------------------------------------------------
-// Constants & Configuration
-// -----------------------------------------------------------------------------
-const int WINDOW_WIDTH  = 1000;
-const int WINDOW_HEIGHT = 600;
-const float GROUND_Y    = 110.0f;
-const int TARGET_FPS    = 60;
-const int FRAME_DELAY_MS = 1000 / TARGET_FPS;
+// ============================================================================
+// Configuration
+// ============================================================================
+const int   WIN_W    = 1000;
+const int   WIN_H    = 450;
+const float GROUND_Y = 110.0f;
+const int   FRAME_MS = 16;          // ~60 FPS timer
+const float PX       = 4.0f;        // size of one sprite "pixel"
+const float DINO_PX  = 2.0f;        // pixel size for dinosaur (37x2 = 74px tall)
 
-// Day-Night Cycle Period in seconds
-const float CYCLE_DURATION = 40.0f; // 40 seconds for full Dawn -> Day -> Sunset -> Night cycle
+// Speed (pixels per 60fps-frame). Calm start, gentle ramp.
+const float BASE_SPEED = 4.0f;
+const float MAX_SPEED  = 8.0f;
+const float SPEED_RAMP = 0.0008f;   // speed = BASE + score * RAMP (max at 5000 pts)
 
-// -----------------------------------------------------------------------------
-// Data Structures
-// -----------------------------------------------------------------------------
+// Jump physics (floaty and forgiving)
+const float JUMP_FORCE = 12.5f;
+const float GRAVITY    = 0.55f;
+
+// Day-night cycle timing (seconds) - long, calm phases
+const float CYCLE     = 150.0f;     // full cycle length
+const float DAY_END   = 90.0f;      // 0..90   : dawn -> day -> dusk
+const float FADE      = 4.0f;       // 90..94  : fade to night
+const float NIGHT_END = 146.0f;     // 94..146 : night, 146..150 : fade to dawn
+
+// ============================================================================
+// Colour helpers
+// ============================================================================
 struct ColorRGB {
     float r, g, b;
-    ColorRGB(float r = 0.0f, float g = 0.0f, float b = 0.0f) : r(r), g(g), b(b) {}
-    ColorRGB operator*(float scalar) const {
-        return ColorRGB(r * scalar, g * scalar, b * scalar);
-    }
-    ColorRGB operator+(const ColorRGB& o) const {
-        return ColorRGB(r + o.r, g + o.g, b + o.b);
-    }
+    ColorRGB(float r = 0.f, float g = 0.f, float b = 0.f) : r(r), g(g), b(b) {}
 };
 
+// Linear interpolation: C(t) = C1 + (C2 - C1) * t
 ColorRGB lerp(const ColorRGB& a, const ColorRGB& b, float t) {
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    return ColorRGB(
-        a.r + (b.r - a.r) * t,
-        a.g + (b.g - a.g) * t,
-        a.b + (b.b - a.b) * t
-    );
+    if (t < 0.f) t = 0.f;
+    if (t > 1.f) t = 1.f;
+    return ColorRGB(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t);
+}
+float smooth01(float t) { if (t < 0.f) t = 0.f; if (t > 1.f) t = 1.f; return t * t * (3.f - 2.f * t); }
+void  setColor(const ColorRGB& c) { glColor3f(c.r, c.g, c.b); }
+
+// ============================================================================
+// AABB
+// ============================================================================
+struct RectAABB { float x, y, w, h; };
+bool aabbCollide(const RectAABB& a, const RectAABB& b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-struct RectAABB {
-    float x, y, width, height;
+// ============================================================================
+// Pixel-art sprites ('#' = filled pixel). Row 0 is the TOP of the sprite.
+// ============================================================================
+const char* DINO_RUN_A[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    ".......BBBBB................................BBBBBBKBBBBB...",
+    "...BBBBBBBBBBB.............................BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
+    "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB.................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB.......BBBBB.................",
+    ".........................YYBB.........BBBBB................",
+    "........................YYBB...........BBBBB...............",
+    "........................YYB.............BBBB...............",
+    ".........................YB..............BBB...............",
+    ".........................BB...............BBB..............",
+    ".........................BB...............BBBBB............",
+    ".........................BBBB..............BBBB............",
+    ".........................BBBBB.............................",
 };
 
-bool checkAABBCollision(const RectAABB& a, const RectAABB& b) {
-    return (a.x < b.x + b.width &&
-            a.x + a.width > b.x &&
-            a.y < b.y + b.height &&
-            a.y + a.height > b.y);
-}
-
-// Particle for dust, jump landing, and crash explosion
-struct Particle {
-    float x, y;
-    float vx, vy;
-    float life;      // 1.0 down to 0.0
-    float decay;
-    float size;
-    ColorRGB color;
+const char* DINO_RUN_B[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    "....BBBBBB..................................BBBBBBKBBBBB...",
+    "..BBBBBBBBBB...............................BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
+    "....BBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB..................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB......BBBBBB.................",
+    ".........................YYBB........BBBBBB................",
+    "........................YYBB..........BBBBB................",
+    ".......................YYBBB...........BBBB................",
+    "......................YYBB..............BBB................",
+    ".....................YYBB................BBB...............",
+    "....................YYBB.................BBBB..............",
+    "..........................................BBBBB............",
+    "..........................................BBBBBB...........",
 };
 
-// Background Cloud
-struct Cloud {
-    float x, y;
-    float speed;
-    float scale;
+const char* DINO_JUMP[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    ".......BBBBB................................BBBBBBKBBBBB...",
+    "...BBBBBBBBBBB.............................BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
+    "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB..................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB......BBBBB..................",
+    ".........................YYBB........BBBBB.................",
+    ".......................YYYYBB.........BBBB.................",
+    ".....................YYYYYBB...........BBB.................",
+    "...................YYYYYBB.............BBB.................",
+    "...........................................................",
+    "...........................................................",
+    "...........................................................",
+    "...........................................................",
 };
 
-// Ground detail (pebbles, grass tufts)
-struct GroundDetail {
-    float x, y;
-    float width, height;
-    int type; // 0 = pebble, 1 = dash line, 2 = grass tuft
+const char* DINO_CRASH[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    ".......BBBBB................................BBBBBK.KBBBB...",
+    "...BBBBBBBBBBB.............................BBBBBB.K.BBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBK.KBBBBBB.",
+    "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKK..KK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYKKKKYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB.................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB.......BBBBB.................",
+    ".........................YYBB.........BBBBB................",
+    "........................YYBB...........BBBBB...............",
+    "........................YYB.............BBBB...............",
+    ".........................YB..............BBB...............",
+    ".........................BB...............BBB..............",
+    ".........................BB...............BBBBB............",
+    ".........................BBBB..............BBBB............",
+    ".........................BBBBB.............................",
 };
 
-// Obstacle Types
-enum ObstacleType {
-    OBS_CACTUS_SMALL = 0,
-    OBS_CACTUS_DOUBLE,
-    OBS_CACTUS_TALL,
-    OBS_ROCK,
-    OBS_BIRD_HIGH,   // Duck under!
-    OBS_BIRD_LOW     // Jump over!
+const char* DINO_DUCK_A[19] = {
+    "............................................................",
+    "............................................................",
+    "............................................................",
+    "...................................................BBBBB....",
+    ".................................................BBBBBBBB...",
+    "................................................BBBBBKBBBB..",
+    "BBBBBBBBBBBBBBBBBB.............................BBBBBBBBBBBB.",
+    ".BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBKKKKK..",
+    "..YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYY...",
+    "...YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYBBBBBYYYYY....",
+    ".....YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYBBBB.........",
+    ".......YYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYBBB..BB.......",
+    "..........YYYYYYYYYYBBBBBBBBBBBBBBBBBBYYYYYYYBBB....BB......",
+    ".............YYYYYYYYYYBBBBBBBBBBBBBYYYBBYBBBB..............",
+    "................YYYYYYYYYYBBBBBBBBBYBBBB..BBBB..............",
+    "...................YYBB...BBBBBBBB........BBBB..............",
+    "..................YYBB.....BBBBBBB........BBBB..............",
+    "..................YYBB......BBBB............BB..............",
+    ".................YYBBB......................BBB.............",
 };
 
-struct Obstacle {
-    ObstacleType type;
-    float x, y;
-    float width, height;
-    float animTimer; // for wing flapping or animated features
-    bool passed;     // scored?
+const char* DINO_DUCK_B[19] = {
+    "............................................................",
+    "............................................................",
+    "............................................................",
+    "...................................................BBBBB....",
+    ".................................................BBBBBBBB...",
+    "................................................BBBBBKBBBB..",
+    "BBBBBBBBBBBBBBBBBB.............................BBBBBBBBBBBB.",
+    ".BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBKKKKK..",
+    "..YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYY...",
+    "...YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYBBBBBYYYYY....",
+    ".....YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYBBBB.........",
+    ".......YYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYBBB..BB.......",
+    "..........YYYYYYYYYYBBBBBBBBBBBBBBBBBBYYYYYYYBBB....BB......",
+    ".............YYYYYYYYYYBBBBBBBBBBBBBYYYBBYBBBB..............",
+    "................YYYYYYYYYYBBBBBBBBBYBBBB..BBBB..............",
+    "....................YYBB....BBBBBBB........BBBB.............",
+    "...................YYBB......BBBBBB.........BBBB............",
+    "....................YYBB......BBBB............BB............",
+    ".....................YYBBB....................BBB...........",
 };
 
-// Star in the night sky
-struct Star {
-    float x, y;
-    float size;
-    float twinkleOffset;
+
+
+// ============================================================================
+// Dynamic Themes (Changeable anytime with [T])
+// ============================================================================
+struct ThemeColors {
+    const char* name;
+    ColorRGB body;
+    ColorRGB belly;
+    ColorRGB eye;
 };
 
-// Game States
-enum GameState {
-    STATE_START = 0,
-    STATE_PLAYING,
-    STATE_PAUSED,
-    STATE_GAME_OVER
+const ThemeColors THEMES[] = {
+    { "CYAN RAPTOR",    { 0.00f, 0.62f, 0.88f }, { 1.00f, 0.80f, 0.00f }, { 0.10f, 0.12f, 0.16f } },
+    { "JURASSIC GREEN", { 0.06f, 0.72f, 0.50f }, { 0.99f, 0.88f, 0.28f }, { 0.10f, 0.12f, 0.16f } },
+    { "CRIMSON BLAZE",  { 0.94f, 0.27f, 0.27f }, { 0.98f, 0.45f, 0.09f }, { 0.10f, 0.12f, 0.16f } },
+    { "NEON CYBER",     { 0.66f, 0.33f, 0.97f }, { 0.93f, 0.28f, 0.60f }, { 0.10f, 0.12f, 0.16f } },
+    { "OBSIDIAN GOLD",  { 0.24f, 0.28f, 0.35f }, { 0.96f, 0.62f, 0.04f }, { 0.90f, 0.20f, 0.20f } }
 };
+const int THEME_COUNT = 5;
+int currentTheme = 0;
 
-// Day-Night Stages
-enum DayNightPhase {
-    PHASE_DAWN = 0,
-    PHASE_DAY,
-    PHASE_SUNSET,
-    PHASE_NIGHT
-};
+// Dynamic lighting colors for the current runner theme
+ColorRGB curBodyCol, curBellyCol, curEyeCol;
 
-// -----------------------------------------------------------------------------
-// Global Variables & State
-// -----------------------------------------------------------------------------
-GameState gameState = STATE_START;
 
-// Runner State
-float runnerX = 140.0f;
-float runnerY = GROUND_Y;
-float runnerVelocityY = 0.0f;
-const float JUMP_FORCE = 15.2f;
-const float GRAVITY    = 0.78f;
-bool isGrounded = true;
-bool isDucking  = false;
-float runAnimPhase = 0.0f;
-float runnerTilt = 0.0f;
+// ============================================================================
+// World data
+// ============================================================================
+enum ObstType { OBS_CONE = 0, OBS_CONE2, OBS_BARRIER, OBS_BOLLARD, OBS_DRONE_HIGH, OBS_DRONE_LOW };
+struct Obstacle  { ObstType type; float x, y, w, h, anim; };
+struct Particle  { float x, y, vx, vy, life, decay, size; };
+struct Cloud     { float x, y, s; };
+struct Dash      { float x, y, w; };
+struct Bump      { float x, w; };
+struct Star      { float x, y, tw; };
+struct Building  { float x, w, h; int cols, rows; bool lit[4][6]; };
 
-// Dimensions
-const float RUNNER_WIDTH_STAND  = 44.0f;
-const float RUNNER_HEIGHT_STAND = 70.0f;
-const float RUNNER_WIDTH_DUCK   = 64.0f;
-const float RUNNER_HEIGHT_DUCK  = 38.0f;
+enum GameState { STATE_START = 0, STATE_PLAYING, STATE_PAUSED, STATE_GAME_OVER };
+enum DayPhase  { PHASE_DAWN = 0, PHASE_DAY, PHASE_DUSK, PHASE_NIGHT };
 
-// Hitbox shrinkage for fair, responsive gameplay
-const float HITBOX_PADDING_X = 6.0f;
-const float HITBOX_PADDING_Y = 4.0f;
+GameState gState = STATE_START;
+DayPhase  gPhase = PHASE_DAWN;
 
-// Game Progression
-float gameSpeed = 6.8f;
-const float BASE_SPEED = 6.8f;
-const float MAX_SPEED  = 16.0f;
-float score = 0.0f;
-int highScore = 0;
-float cycleTimer = 0.0f;
-DayNightPhase currentPhase = PHASE_DAY;
-float ambientLight = 1.0f;
+// Current scene palette (recomputed every frame)
+ColorRGB bgCol, inkCol;
+float    nightF = 0.f;   // 0 = day, 1 = night
 
-// Debug and options
-bool showHitboxes = false;
-bool soundEnabled = true;
+// Runner
+const float rX = 100.f;
+float rY = GROUND_Y, rVY = 0.f, runAnim = 0.f;
+bool  grounded = true, ducking = false;
 
-// Collections
+// Progress
+float gameSpeed = BASE_SPEED, score = 0.f, cycleT = 0.f;
+int   highScore = 0, lastMile = 0;
+float blinkTimer = 0.f;
+float spawnAcc = 0.f, nextSpawn = 400.f;
+bool  showHB = false;
+int   lastTime = 0;
+
 std::vector<Obstacle> obstacles;
 std::vector<Particle> particles;
-std::vector<Cloud> clouds;
-std::vector<GroundDetail> groundDetails;
-std::vector<Star> stars;
+std::vector<Cloud>    clouds;
+std::vector<Dash>     dashes;
+std::vector<Bump>     bumps;
+std::vector<Star>     stars;
+std::vector<Building> farB, nearB;
 
-// Parallax Mountain Points
-const int MOUNTAIN_COUNT = 16;
-float farMountainX[MOUNTAIN_COUNT];
-float farMountainH[MOUNTAIN_COUNT];
-float nearHillX[MOUNTAIN_COUNT];
-float nearHillH[MOUNTAIN_COUNT];
+float frand(float a, float b) { return a + (b - a) * (rand() % 10000) / 10000.f; }
 
-// Sound System (Non-blocking async sound using Windows Beep)
-void playBeepSound(int freq, int durationMs) {
-    if (!soundEnabled) return;
-    std::thread([freq, durationMs]() {
-        Beep(freq, durationMs);
-    }).detach();
+// ============================================================================
+// Gentle sound effects
+// Soft sine tones are synthesised into in-memory WAV buffers at startup and
+// played asynchronously with PlaySound. Each tone has a short fade-in and a
+// smooth fade-out, so nothing clicks or beeps harshly. Only one sound plays at
+// a time (a new sound replaces the old), so effects never pile up.
+// ============================================================================
+struct Tone { float f0, f1, dur, delay, vol; };
+std::vector<char> sndJump, sndDuck, sndScore, sndOver;
+bool soundOn = true;
+
+std::vector<char> synthWav(const std::vector<Tone>& tones) {
+    const int SR = 22050;
+    float total = 0.f;
+    for (const auto& t : tones) total = std::max(total, t.delay + t.dur);
+    int N = (int)(total * SR) + 64;
+    std::vector<float> mix(N, 0.f);
+
+    for (const auto& t : tones) {
+        int s0 = (int)(t.delay * SR), len = (int)(t.dur * SR);
+        double ph = 0.0;
+        for (int i = 0; i < len && s0 + i < N; ++i) {
+            float u   = (float)i / len;
+            float f   = t.f0 * powf(t.f1 / t.f0, u);            // smooth pitch glide
+            ph       += 2.0 * M_PI * f / SR;
+            float att = std::min(1.f, i / (0.012f * SR));        // 12 ms fade-in
+            float env = att * (1.f - u) * (1.f - u);             // soft fade-out
+            mix[s0 + i] += (float)(sin(ph) * 0.85 + sin(2.0 * ph) * 0.15) * env * t.vol;
+        }
+    }
+
+    std::vector<char> wav(44 + N * 2);
+    auto w32 = [&](int off, uint32_t v) { memcpy(&wav[off], &v, 4); };
+    auto w16 = [&](int off, uint16_t v) { memcpy(&wav[off], &v, 2); };
+    memcpy(&wav[0], "RIFF", 4); w32(4, 36 + N * 2); memcpy(&wav[8], "WAVEfmt ", 8);
+    w32(16, 16); w16(20, 1); w16(22, 1); w32(24, SR); w32(28, SR * 2); w16(32, 2); w16(34, 16);
+    memcpy(&wav[36], "data", 4); w32(40, N * 2);
+    for (int i = 0; i < N; ++i) {
+        float s = std::max(-1.f, std::min(1.f, mix[i]));
+        int16_t v = (int16_t)(s * 32767.f);
+        memcpy(&wav[44 + i * 2], &v, 2);
+    }
+    return wav;
 }
 
-void soundJump() {
-    if (!soundEnabled) return;
-    std::thread([]() {
-        Beep(520, 45);
-        Beep(780, 50);
-    }).detach();
+void initSounds() {
+    sndJump  = synthWav({ { 520.f, 720.f, 0.11f, 0.00f, 0.28f } });
+    sndDuck  = synthWav({ { 320.f, 240.f, 0.07f, 0.00f, 0.18f } });
+    sndScore = synthWav({ { 660.f, 660.f, 0.14f, 0.00f, 0.22f },
+                          { 880.f, 880.f, 0.24f, 0.11f, 0.22f } });
+    sndOver  = synthWav({ { 440.f, 330.f, 0.25f, 0.00f, 0.26f },
+                          { 330.f, 247.f, 0.40f, 0.20f, 0.24f } });
 }
 
-void soundDuck() {
-    if (!soundEnabled) return;
-    std::thread([]() {
-        Beep(330, 40);
-    }).detach();
+void playSnd(const std::vector<char>& w) {
+    if (soundOn && !w.empty())
+        PlaySoundA(w.data(), NULL, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
 }
 
-void soundScoreMilestone() {
-    if (!soundEnabled) return;
-    std::thread([]() {
-        Beep(880, 60);
-        Beep(1174, 90);
-    }).detach();
+// ============================================================================
+// Drawing primitives
+// ============================================================================
+void fillRect(float x, float y, float w, float h) {
+    glBegin(GL_QUADS);
+    glVertex2f(x, y); glVertex2f(x + w, y); glVertex2f(x + w, y + h); glVertex2f(x, y + h);
+    glEnd();
 }
-
-void soundGameOver() {
-    if (!soundEnabled) return;
-    std::thread([]() {
-        Beep(440, 100);
-        Beep(330, 120);
-        Beep(220, 250);
-    }).detach();
+void outlineRect(float x, float y, float w, float h) {
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(x, y); glVertex2f(x + w, y); glVertex2f(x + w, y + h); glVertex2f(x, y + h);
+    glEnd();
 }
-
-// -----------------------------------------------------------------------------
-// Drawing Helper Primitives
-// -----------------------------------------------------------------------------
-void drawFilledCircle(float cx, float cy, float r, int segments = 24) {
+void fillCircle(float cx, float cy, float r, int seg = 20) {
     glBegin(GL_TRIANGLE_FAN);
     glVertex2f(cx, cy);
-    for (int i = 0; i <= segments; ++i) {
-        float angle = i * 2.0f * M_PI / segments;
-        glVertex2f(cx + cosf(angle) * r, cy + sinf(angle) * r);
+    for (int i = 0; i <= seg; ++i) {
+        float a = i * 2.f * (float)M_PI / seg;
+        glVertex2f(cx + cosf(a) * r, cy + sinf(a) * r);
     }
     glEnd();
 }
-
-void drawCircleOutline(float cx, float cy, float r, int segments = 24) {
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < segments; ++i) {
-        float angle = i * 2.0f * M_PI / segments;
-        glVertex2f(cx + cosf(angle) * r, cy + sinf(angle) * r);
-    }
-    glEnd();
-}
-
-void drawRect(float x, float y, float w, float h) {
-    glBegin(GL_QUADS);
-    glVertex2f(x, y);
-    glVertex2f(x + w, y);
-    glVertex2f(x + w, y + h);
-    glVertex2f(x, y + h);
-    glEnd();
-}
-
-void drawRectOutline(float x, float y, float w, float h) {
-    glBegin(GL_LINE_LOOP);
-    glVertex2f(x, y);
-    glVertex2f(x + w, y);
-    glVertex2f(x + w, y + h);
-    glVertex2f(x, y + h);
-    glEnd();
-}
-
-// Bitmap Text Helper
-void drawText(float x, float y, const std::string& text, void* font = GLUT_BITMAP_HELVETICA_18) {
+void drawStr(float x, float y, const std::string& s, void* f) {
     glRasterPos2f(x, y);
-    for (char c : text) {
-        glutBitmapCharacter(font, c);
+    for (char c : s) glutBitmapCharacter(f, c);
+}
+float strW(const std::string& s, void* f) {
+    return (float)glutBitmapLength(f, (const unsigned char*)s.c_str());
+}
+void drawStrC(float cx, float y, const std::string& s, void* f) { drawStr(cx - strW(s, f) * 0.5f, y, s, f); }
+
+// Raster sprite -> quads. (x, y) = bottom-left corner.
+void drawSprite(const char* const* rows, int n, float x, float y) {
+    glBegin(GL_QUADS);
+    for (int r = 0; r < n; ++r) {
+        const char* row = rows[r];
+        int len = (int)strlen(row);
+        float yy = y + (n - 1 - r) * PX;
+        for (int c = 0; c < len; ++c) {
+            if (row[c] != '#') continue;
+            float xx = x + c * PX;
+            glVertex2f(xx, yy); glVertex2f(xx + PX, yy);
+            glVertex2f(xx + PX, yy + PX); glVertex2f(xx, yy + PX);
+        }
     }
+    glEnd();
 }
 
-// -----------------------------------------------------------------------------
-// Particle Emitters
-// -----------------------------------------------------------------------------
-void spawnDust(float x, float y, int count = 4, float baseVx = -2.0f, float baseVy = 1.0f) {
-    for (int i = 0; i < count; ++i) {
-        Particle p;
-        p.x = x + (rand() % 12 - 6);
-        p.y = y + (rand() % 6);
-        p.vx = baseVx + ((rand() % 100) / 100.0f - 0.5f) * 2.0f;
-        p.vy = baseVy + ((rand() % 100) / 100.0f) * 2.5f;
-        p.life = 1.0f;
-        p.decay = 0.04f + ((rand() % 100) / 100.0f) * 0.04f;
-        p.size = 2.5f + (rand() % 3);
-        p.color = ColorRGB(0.75f, 0.70f, 0.65f);
-        particles.push_back(p);
+// Dinosaur multi-colored sprite renderer with dynamic theme lighting
+void drawDinoSprite(const char* const* rows, int n, float x, float y, float pxSize,
+                    const ColorRGB& colBody, const ColorRGB& colBelly, const ColorRGB& colEye) {
+    glBegin(GL_QUADS);
+    for (int r = 0; r < n; ++r) {
+        const char* row = rows[r];
+        int len = (int)strlen(row);
+        float yy = y + (n - 1 - r) * pxSize;
+        for (int c = 0; c < len; ++c) {
+            char ch = row[c];
+            if (ch == '.') continue;
+            if (ch == 'B') glColor3f(colBody.r, colBody.g, colBody.b);
+            else if (ch == 'Y') glColor3f(colBelly.r, colBelly.g, colBelly.b);
+            else if (ch == 'K') glColor3f(colEye.r, colEye.g, colEye.b);
+            else if (ch == 'W') glColor3f(1.f, 1.f, 1.f);
+            else glColor3f(colBody.r, colBody.g, colBody.b);
+
+            float xx = x + c * pxSize;
+            glVertex2f(xx, yy); glVertex2f(xx + pxSize, yy);
+            glVertex2f(xx + pxSize, yy + pxSize); glVertex2f(xx, yy + pxSize);
+        }
     }
+    glEnd();
 }
 
-void spawnCrashExplosion(float x, float y) {
-    for (int i = 0; i < 40; ++i) {
-        Particle p;
-        p.x = x;
-        p.y = y;
-        float angle = (rand() % 360) * M_PI / 180.0f;
-        float speed = 2.0f + (rand() % 60) / 10.0f;
-        p.vx = cosf(angle) * speed;
-        p.vy = sinf(angle) * speed;
-        p.life = 1.0f;
-        p.decay = 0.02f + (rand() % 20) / 1000.0f;
-        p.size = 3.0f + (rand() % 4);
-        if (i % 3 == 0) p.color = ColorRGB(1.0f, 0.3f, 0.1f);
-        else if (i % 3 == 1) p.color = ColorRGB(1.0f, 0.8f, 0.2f);
-        else p.color = ColorRGB(0.9f, 0.9f, 0.9f);
-        particles.push_back(p);
-    }
+// ============================================================================
+// World generation
+// ============================================================================
+Building makeBuilding(float x, bool isFar) {
+    Building b;
+    b.x = x;
+    b.w = isFar ? frand(40, 110) : frand(30, 80);
+    b.h = isFar ? frand(50, 150) : frand(30, 90);
+    b.cols = 2 + rand() % 3;
+    b.rows = 3 + rand() % 4;
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 6; ++r) b.lit[c][r] = (rand() % 3 == 0);
+    return b;
 }
 
-// -----------------------------------------------------------------------------
-// World Initialization
-// -----------------------------------------------------------------------------
 void initWorld() {
-    srand(static_cast<unsigned int>(time(NULL)));
+    srand((unsigned)time(0));
 
-    // Stars
-    stars.clear();
-    for (int i = 0; i < 80; ++i) {
-        Star s;
-        s.x = (rand() % WINDOW_WIDTH);
-        s.y = GROUND_Y + 120.0f + (rand() % (WINDOW_HEIGHT - (int)GROUND_Y - 140));
-        s.size = 1.0f + (rand() % 3) * 0.7f;
-        s.twinkleOffset = (rand() % 100) / 10.0f;
-        stars.push_back(s);
-    }
+    farB.clear(); nearB.clear();
+    for (float x = 0; x < WIN_W + 200; ) { Building b = makeBuilding(x, true);  farB.push_back(b);  x += b.w + frand(4, 30); }
+    for (float x = 0; x < WIN_W + 200; ) { Building b = makeBuilding(x, false); nearB.push_back(b); x += b.w + frand(20, 90); }
 
-    // Clouds
     clouds.clear();
-    for (int i = 0; i < 5; ++i) {
-        Cloud c;
-        c.x = i * (WINDOW_WIDTH / 5.0f) + (rand() % 80);
-        c.y = 360.0f + (rand() % 160);
-        c.speed = 0.6f + (rand() % 50) / 100.0f;
-        c.scale = 0.8f + (rand() % 50) / 100.0f;
-        clouds.push_back(c);
-    }
+    for (int i = 0; i < 4; ++i) clouds.push_back({ frand(0, WIN_W), frand(250, 360), frand(0.7f, 1.2f) });
 
-    // Ground details
-    groundDetails.clear();
-    for (int i = 0; i < 28; ++i) {
-        GroundDetail gd;
-        gd.x = (rand() % WINDOW_WIDTH);
-        gd.y = (rand() % (int)GROUND_Y);
-        gd.width = 6.0f + (rand() % 14);
-        gd.height = 2.0f + (rand() % 3);
-        gd.type = rand() % 3;
-        groundDetails.push_back(gd);
-    }
+    dashes.clear();
+    for (int i = 0; i < 40; ++i) dashes.push_back({ frand(0, WIN_W), frand(GROUND_Y - 30, GROUND_Y - 6), frand(2, 10) });
 
-    // Parallax Mountains
-    float farStep = (float)WINDOW_WIDTH / (MOUNTAIN_COUNT - 2);
-    for (int i = 0; i < MOUNTAIN_COUNT; ++i) {
-        farMountainX[i] = i * farStep;
-        farMountainH[i] = 130.0f + (rand() % 80);
-        nearHillX[i]    = i * farStep;
-        nearHillH[i]    = 70.0f + (rand() % 55);
-    }
+    bumps.clear();
+    for (int i = 0; i < 4; ++i) bumps.push_back({ frand(0, WIN_W), frand(14, 30) });
 
-    obstacles.clear();
-    particles.clear();
-
-    runnerY = GROUND_Y;
-    runnerVelocityY = 0.0f;
-    isGrounded = true;
-    isDucking = false;
-    runAnimPhase = 0.0f;
-    runnerTilt = 0.0f;
-
-    gameSpeed = BASE_SPEED;
-    score = 0.0f;
-    cycleTimer = 0.0f;
+    stars.clear();
+    for (int i = 0; i < 45; ++i) stars.push_back({ frand(0, WIN_W), frand(240, WIN_H - 50), frand(0, 10) });
 }
 
-// Reset / Restart
 void resetGame() {
-    obstacles.clear();
-    particles.clear();
-    runnerY = GROUND_Y;
-    runnerVelocityY = 0.0f;
-    isGrounded = true;
-    isDucking = false;
-    runAnimPhase = 0.0f;
-    runnerTilt = 0.0f;
-    gameSpeed = BASE_SPEED;
-    score = 0.0f;
-    cycleTimer = 0.0f;
-    gameState = STATE_PLAYING;
+    obstacles.clear(); particles.clear();
+    rY = GROUND_Y; rVY = 0.f; grounded = true; ducking = false; runAnim = 0.f;
+    gameSpeed = BASE_SPEED; score = 0.f; cycleT = 0.f;
+    lastMile = 0; blinkTimer = 0.f;
+    spawnAcc = 0.f; nextSpawn = 400.f;
+    gState = STATE_PLAYING;
 }
 
-// -----------------------------------------------------------------------------
-// Procedural Obstacle Spawning
-// -----------------------------------------------------------------------------
+void spawnDust(float x, float y, int n) {
+    for (int i = 0; i < n; ++i)
+        particles.push_back({ x + frand(-6, 6), y + frand(0, 4), frand(-2.5f, -0.5f), frand(0.3f, 1.8f),
+                              1.f, frand(0.03f, 0.06f), frand(2, 4) });
+}
+
 void spawnObstacle() {
-    Obstacle obs;
-    obs.x = WINDOW_WIDTH + 40.0f;
-    obs.animTimer = 0.0f;
-    obs.passed = false;
-
-    // Determine type: aerial bird or ground obstacle
-    // Birds start appearing once score > 150
-    int choice = rand() % 100;
-    if (score > 150.0f && choice < 32) {
-        if (rand() % 2 == 0) {
-            // High bird: Duck under!
-            obs.type = OBS_BIRD_HIGH;
-            obs.width = 46.0f;
-            obs.height = 30.0f;
-            obs.y = GROUND_Y + 44.0f; // High enough to duck under safely
-        } else {
-            // Low bird: Jump over!
-            obs.type = OBS_BIRD_LOW;
-            obs.width = 46.0f;
-            obs.height = 30.0f;
-            obs.y = GROUND_Y + 14.0f;
-        }
+    Obstacle o; o.x = WIN_W + 40.f; o.anim = 0.f;
+    if (score > 150.f && rand() % 100 < 25) {
+        if (rand() % 2 == 0) { o.type = OBS_DRONE_HIGH; o.w = 54; o.h = 24; o.y = GROUND_Y + 50; } // duck under
+        else                 { o.type = OBS_DRONE_LOW;  o.w = 54; o.h = 24; o.y = GROUND_Y + 20; } // jump over
     } else {
-        int gType = rand() % 4;
-        if (gType == 0) {
-            obs.type = OBS_CACTUS_SMALL;
-            obs.width = 24.0f;
-            obs.height = 46.0f;
-            obs.y = GROUND_Y;
-        } else if (gType == 1) {
-            obs.type = OBS_CACTUS_DOUBLE;
-            obs.width = 42.0f;
-            obs.height = 54.0f;
-            obs.y = GROUND_Y;
-        } else if (gType == 2) {
-            obs.type = OBS_CACTUS_TALL;
-            obs.width = 28.0f;
-            obs.height = 68.0f;
-            obs.y = GROUND_Y;
-        } else {
-            obs.type = OBS_ROCK;
-            obs.width = 38.0f;
-            obs.height = 26.0f;
-            obs.y = GROUND_Y;
+        o.y = GROUND_Y;
+        switch (rand() % 4) {
+            case 0:  o.type = OBS_CONE;    o.w = 26; o.h = 44; break;
+            case 1:  o.type = OBS_CONE2;   o.w = 54; o.h = 44; break;
+            case 2:  o.type = OBS_BARRIER; o.w = 56; o.h = 40; break;
+            default: o.type = OBS_BOLLARD; o.w = 44; o.h = 48; break;
         }
     }
-
-    obstacles.push_back(obs);
+    obstacles.push_back(o);
 }
 
-// -----------------------------------------------------------------------------
-// Day-Night Environment Rendering
-// -----------------------------------------------------------------------------
-void renderSkyAndLighting() {
-    // Phase calculation: cycleTimer loops over CYCLE_DURATION
-    float t = fmodf(cycleTimer, CYCLE_DURATION) / CYCLE_DURATION; // 0.0 to 1.0
+// ============================================================================
+// Day-night palette (Chrome-style: dark ink by day, inverted at night)
+// ============================================================================
+void updatePalette() {
+    float t = fmodf(cycleT, CYCLE);
+    ColorRGB dawnBg(0.98f, 0.94f, 0.90f), dayBg(0.97f, 0.97f, 0.97f),
+             duskBg(0.98f, 0.90f, 0.84f), nightBg(0.11f, 0.12f, 0.16f);
 
-    // Keyframes for Sky Colors:
-    // 0.00 - 0.25: Dawn -> Day
-    // 0.25 - 0.50: Day -> Sunset
-    // 0.50 - 0.75: Sunset -> Deep Night
-    // 0.75 - 1.00: Deep Night -> Dawn
+    ColorRGB dBg;
+    if (t >= NIGHT_END)  dBg = dawnBg;
+    else if (t < 20.f)   dBg = lerp(dawnBg, dayBg, t / 20.f);
+    else if (t < 70.f)   dBg = dayBg;
+    else                 dBg = lerp(dayBg, duskBg, (t - 70.f) / 20.f);
 
-    ColorRGB dawnTop(0.20f, 0.28f, 0.58f),    dawnBot(0.96f, 0.52f, 0.38f);
-    ColorRGB dayTop(0.18f, 0.58f, 0.92f),     dayBot(0.68f, 0.88f, 1.00f);
-    ColorRGB sunsetTop(0.36f, 0.14f, 0.44f),  sunsetBot(0.98f, 0.38f, 0.18f);
-    ColorRGB nightTop(0.02f, 0.04f, 0.12f),   nightBot(0.08f, 0.12f, 0.24f);
+    if (t < DAY_END)              nightF = 0.f;
+    else if (t < DAY_END + FADE)  nightF = smooth01((t - DAY_END) / FADE);
+    else if (t < NIGHT_END)       nightF = 1.f;
+    else                          nightF = 1.f - smooth01((t - NIGHT_END) / FADE);
 
-    ColorRGB skyTop, skyBot;
-    float sunMoonAngle = 0.0f; // radians for celestial arc
-    float nightFactor = 0.0f;  // 0.0 at noon, 1.0 at midnight
+    bgCol  = lerp(dBg, nightBg, nightF);
+    // Ink flips at mid-fade so the runner always contrasts with the sky
+    inkCol = (nightF < 0.5f) ? ColorRGB(0.33f, 0.33f, 0.33f) : ColorRGB(0.86f, 0.86f, 0.88f);
 
-    if (t < 0.25f) {
-        // Dawn to Day
-        float f = t / 0.25f;
-        skyTop = lerp(dawnTop, dayTop, f);
-        skyBot = lerp(dawnBot, dayBot, f);
-        ambientLight = 0.75f + 0.25f * f;
-        currentPhase = (f < 0.5f) ? PHASE_DAWN : PHASE_DAY;
-        sunMoonAngle = f * (M_PI * 0.5f); // 0 to pi/2
-        nightFactor = (1.0f - f) * 0.4f;
-    } else if (t < 0.50f) {
-        // Day to Sunset
-        float f = (t - 0.25f) / 0.25f;
-        skyTop = lerp(dayTop, sunsetTop, f);
-        skyBot = lerp(dayBot, sunsetBot, f);
-        ambientLight = 1.0f - 0.25f * f;
-        currentPhase = (f < 0.6f) ? PHASE_DAY : PHASE_SUNSET;
-        sunMoonAngle = (M_PI * 0.5f) + f * (M_PI * 0.5f); // pi/2 to pi
-        nightFactor = f * 0.2f;
-    } else if (t < 0.75f) {
-        // Sunset to Night
-        float f = (t - 0.50f) / 0.25f;
-        skyTop = lerp(sunsetTop, nightTop, f);
-        skyBot = lerp(sunsetBot, nightBot, f);
-        ambientLight = 0.75f - 0.35f * f;
-        currentPhase = (f < 0.4f) ? PHASE_SUNSET : PHASE_NIGHT;
-        sunMoonAngle = f * (M_PI * 0.5f); // Moon rises
-        nightFactor = 0.2f + 0.8f * f;
+    // Dynamic theme ambient lighting for the dinosaur runner
+    const ThemeColors& th = THEMES[currentTheme];
+    if (nightF > 0.01f) {
+        // At night/dusk, tint smoothly into luminous neon/glow shades and light up the eyes
+        ColorRGB nightBody = lerp(th.body, ColorRGB(0.2f, 0.8f, 1.0f), 0.25f);
+        curBodyCol  = lerp(th.body, nightBody, nightF);
+        curBellyCol = lerp(th.belly, ColorRGB(1.0f, 0.95f, 0.5f), nightF * 0.4f);
+        curEyeCol   = lerp(th.eye, ColorRGB(0.95f, 0.95f, 0.95f), nightF);
     } else {
-        // Night to Dawn
-        float f = (t - 0.75f) / 0.25f;
-        skyTop = lerp(nightTop, dawnTop, f);
-        skyBot = lerp(nightBot, dawnBot, f);
-        ambientLight = 0.40f + 0.35f * f;
-        currentPhase = (f < 0.7f) ? PHASE_NIGHT : PHASE_DAWN;
-        sunMoonAngle = (M_PI * 0.5f) + f * (M_PI * 0.5f);
-        nightFactor = 1.0f - f;
+        curBodyCol  = th.body;
+        curBellyCol = th.belly;
+        curEyeCol   = th.eye;
     }
 
-    // Render Sky Gradient (from horizon GROUND_Y up to WINDOW_HEIGHT)
-    glBegin(GL_QUADS);
-    glColor3f(skyBot.r, skyBot.g, skyBot.b);
-    glVertex2f(0.0f, GROUND_Y);
-    glVertex2f(WINDOW_WIDTH, GROUND_Y);
-    glColor3f(skyTop.r, skyTop.g, skyTop.b);
-    glVertex2f(WINDOW_WIDTH, WINDOW_HEIGHT);
-    glVertex2f(0.0f, WINDOW_HEIGHT);
-    glEnd();
+    if      (t < 20.f)       gPhase = PHASE_DAWN;
+    else if (t < 70.f)       gPhase = PHASE_DAY;
+    else if (t < DAY_END + FADE * 0.5f) gPhase = PHASE_DUSK;
+    else if (t < NIGHT_END + FADE * 0.5f) gPhase = PHASE_NIGHT;
+    else                     gPhase = PHASE_DAWN;
+}
 
-    // Render Twinkling Stars (intensity scaled by nightFactor)
-    if (nightFactor > 0.05f) {
-        glPointSize(2.0f);
-        glBegin(GL_POINTS);
+// Mix between background and ink: 0 = invisible, 1 = full ink
+ColorRGB tone(float k) { return lerp(bgCol, inkCol, k); }
+
+// ============================================================================
+// Rendering
+// ============================================================================
+void renderBackground() {
+    float t = fmodf(cycleT, CYCLE);
+
+    // Sun (day) - soft pale gold disc on an arc
+    if (nightF < 0.5f) {
+        float p = t < DAY_END ? t / DAY_END : 1.f;
+        float sx = 80.f + 840.f * p, sy = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
+        setColor(lerp(bgCol, ColorRGB(0.99f, 0.80f, 0.40f), 0.55f));
+        fillCircle(sx, sy, 18.f, 28);
+    } else {
+        // Stars
+        glBegin(GL_QUADS);
         for (const auto& s : stars) {
-            float twinkle = 0.5f + 0.5f * sinf(glutGet(GLUT_ELAPSED_TIME) * 0.005f + s.twinkleOffset);
-            float alpha = nightFactor * twinkle;
-            glColor3f(alpha * 0.95f, alpha * 0.95f, alpha * 1.0f);
-            glVertex2f(s.x, s.y);
+            float tw = 0.4f + 0.6f * (0.5f + 0.5f * sinf(glutGet(GLUT_ELAPSED_TIME) * 0.003f + s.tw));
+            setColor(tone(tw * 0.8f));
+            glVertex2f(s.x, s.y); glVertex2f(s.x + 2, s.y); glVertex2f(s.x + 2, s.y + 2); glVertex2f(s.x, s.y + 2);
         }
         glEnd();
+        // Crescent moon
+        float p = (t - DAY_END) / (NIGHT_END + FADE - DAY_END);
+        float mx = 80.f + 840.f * p, my = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
+        setColor(tone(0.9f)); fillCircle(mx, my, 15.f, 28);
+        setColor(bgCol);      fillCircle(mx + 7.f, my + 4.f, 13.f, 28);
     }
 
-    // Render Celestial Bodies (Sun and Moon)
-    // Celestial arc calculation:
-    // Sun active during t in [0.0, 0.50]
-    // Moon active during t in [0.50, 1.00]
-    if (t < 0.50f) {
-        // Sun
-        float sunProgress = t / 0.50f; // 0 to 1
-        float sunAngle = sunProgress * M_PI; // 0 to pi
-        float sunX = 100.0f + sunProgress * (WINDOW_WIDTH - 200.0f);
-        float sunY = GROUND_Y + 40.0f + sinf(sunAngle) * 360.0f;
-
-        // Glowing outer halo
-        glColor3f(1.0f, 0.85f, 0.35f);
-        drawFilledCircle(sunX, sunY, 32.0f, 28);
-        glColor3f(1.0f, 0.96f, 0.60f);
-        drawFilledCircle(sunX, sunY, 24.0f, 24);
-
-        // Rotating Sun Rays
-        float rayTime = glutGet(GLUT_ELAPSED_TIME) * 0.002f;
-        glColor3f(1.0f, 0.82f, 0.20f);
-        glLineWidth(2.5f);
-        glBegin(GL_LINES);
-        for (int i = 0; i < 8; ++i) {
-            float a = rayTime + i * (M_PI * 0.25f);
-            glVertex2f(sunX + cosf(a) * 34.0f, sunY + sinf(a) * 34.0f);
-            glVertex2f(sunX + cosf(a) * 44.0f, sunY + sinf(a) * 44.0f);
-        }
-        glEnd();
-        glLineWidth(1.0f);
-    } else {
-        // Moon
-        float moonProgress = (t - 0.50f) / 0.50f; // 0 to 1
-        float moonAngle = moonProgress * M_PI;
-        float moonX = 100.0f + moonProgress * (WINDOW_WIDTH - 200.0f);
-        float moonY = GROUND_Y + 40.0f + sinf(moonAngle) * 360.0f;
-
-        // Outer soft glow
-        glColor3f(0.85f, 0.90f, 1.0f);
-        drawFilledCircle(moonX, moonY, 26.0f, 26);
-        glColor3f(0.96f, 0.98f, 1.0f);
-        drawFilledCircle(moonX, moonY, 22.0f, 24);
-
-        // Moon Craters
-        glColor3f(0.80f, 0.85f, 0.92f);
-        drawFilledCircle(moonX - 6.0f, moonY + 4.0f, 4.5f, 12);
-        drawFilledCircle(moonX + 7.0f, moonY - 3.0f, 3.5f, 10);
-        drawFilledCircle(moonX + 2.0f, moonY + 8.0f, 2.5f, 10);
-    }
-
-    // Render Distant Mountain Silhouettes (Far layer, slow scroll)
-    ColorRGB mtnColor = lerp(ColorRGB(0.40f, 0.45f, 0.60f), ColorRGB(0.08f, 0.10f, 0.22f), nightFactor);
-    glColor3f(mtnColor.r, mtnColor.g, mtnColor.b);
-    glBegin(GL_TRIANGLE_STRIP);
-    for (int i = 0; i < MOUNTAIN_COUNT; ++i) {
-        glVertex2f(farMountainX[i], GROUND_Y + farMountainH[i]);
-        glVertex2f(farMountainX[i], GROUND_Y);
-    }
-    glEnd();
-
-    // Render Near Hills (Middle layer)
-    ColorRGB hillColor = lerp(ColorRGB(0.32f, 0.50f, 0.42f), ColorRGB(0.06f, 0.14f, 0.18f), nightFactor);
-    glColor3f(hillColor.r, hillColor.g, hillColor.b);
-    glBegin(GL_TRIANGLE_STRIP);
-    for (int i = 0; i < MOUNTAIN_COUNT; ++i) {
-        glVertex2f(nearHillX[i], GROUND_Y + nearHillH[i]);
-        glVertex2f(nearHillX[i], GROUND_Y);
-    }
-    glEnd();
-
-    // Render Clouds (Floating puffy clouds)
+    // Clouds (flat, faint)
+    setColor(tone(0.10f));
     for (const auto& c : clouds) {
-        ColorRGB cloudCol = lerp(ColorRGB(1.0f, 1.0f, 1.0f), ColorRGB(0.25f, 0.28f, 0.40f), nightFactor);
-        glColor3f(cloudCol.r, cloudCol.g, cloudCol.b);
-        float s = c.scale;
-        drawFilledCircle(c.x, c.y, 22.0f * s, 16);
-        drawFilledCircle(c.x + 18.0f * s, c.y + 6.0f * s, 26.0f * s, 18);
-        drawFilledCircle(c.x + 40.0f * s, c.y, 20.0f * s, 16);
-        drawFilledCircle(c.x + 22.0f * s, c.y - 6.0f * s, 18.0f * s, 14);
+        float s = c.s;
+        fillRect(c.x, c.y, 70.f * s, 10.f * s);
+        fillCircle(c.x + 18.f * s, c.y + 10.f * s, 12.f * s, 16);
+        fillCircle(c.x + 38.f * s, c.y + 14.f * s, 16.f * s, 16);
+        fillCircle(c.x + 56.f * s, c.y + 8.f * s,  10.f * s, 16);
+    }
+
+    // Far skyline (very faint) then near skyline (faint)
+    setColor(tone(0.07f));
+    for (const auto& b : farB) fillRect(b.x, GROUND_Y, b.w, b.h);
+    setColor(tone(0.13f));
+    for (const auto& b : nearB) fillRect(b.x, GROUND_Y, b.w, b.h);
+
+    // Lit windows at night only
+    if (nightF > 0.5f) {
+        setColor(tone(0.40f));
+        for (const auto& b : nearB)
+            for (int c = 0; c < b.cols && c < 4; ++c)
+                for (int r = 0; r < b.rows && r < 6; ++r) {
+                    if (!b.lit[c][r]) continue;
+                    float wx = b.x + (c + 1) * b.w / (b.cols + 1) - 2.f;
+                    float wy = GROUND_Y + (r + 1) * b.h / (b.rows + 1) - 2.f;
+                    fillRect(wx, wy, 4.f, 4.f);
+                }
     }
 }
 
-// -----------------------------------------------------------------------------
-// Ground Terrain Rendering
-// -----------------------------------------------------------------------------
 void renderGround() {
-    float nightFactor = (currentPhase == PHASE_NIGHT) ? 0.8f : (currentPhase == PHASE_SUNSET ? 0.4f : 0.0f);
-    ColorRGB groundBedTop = lerp(ColorRGB(0.85f, 0.76f, 0.58f), ColorRGB(0.18f, 0.18f, 0.28f), nightFactor);
-    ColorRGB groundBedBot = lerp(ColorRGB(0.58f, 0.48f, 0.35f), ColorRGB(0.10f, 0.10f, 0.18f), nightFactor);
+    setColor(inkCol);
+    fillRect(0, GROUND_Y - 1.f, WIN_W, 2.f);           // ground line
 
-    // Bedrock gradient below ground line
-    glBegin(GL_QUADS);
-    glColor3f(groundBedTop.r, groundBedTop.g, groundBedTop.b);
-    glVertex2f(0.0f, GROUND_Y);
-    glVertex2f(WINDOW_WIDTH, GROUND_Y);
-    glColor3f(groundBedBot.r, groundBedBot.g, groundBedBot.b);
-    glVertex2f(WINDOW_WIDTH, 0.0f);
-    glVertex2f(0.0f, 0.0f);
-    glEnd();
-
-    // Ground Surface Border Line
-    ColorRGB lineCol = lerp(ColorRGB(0.35f, 0.28f, 0.18f), ColorRGB(0.30f, 0.35f, 0.50f), nightFactor);
-    glColor3f(lineCol.r, lineCol.g, lineCol.b);
-    glLineWidth(3.0f);
-    glBegin(GL_LINES);
-    glVertex2f(0.0f, GROUND_Y);
-    glVertex2f(WINDOW_WIDTH, GROUND_Y);
-    glEnd();
-    glLineWidth(1.0f);
-
-    // Dynamic Scrolling Ground Details
-    for (const auto& gd : groundDetails) {
-        if (gd.type == 0) {
-            // Pebble
-            glColor3f(lineCol.r * 1.1f, lineCol.g * 1.1f, lineCol.b * 1.1f);
-            drawFilledCircle(gd.x, gd.y, gd.height, 8);
-        } else if (gd.type == 1) {
-            // Dirt Dash Line
-            glColor3f(lineCol.r * 0.9f, lineCol.g * 0.9f, lineCol.b * 0.9f);
-            glLineWidth(2.0f);
-            glBegin(GL_LINES);
-            glVertex2f(gd.x, gd.y);
-            glVertex2f(gd.x + gd.width, gd.y);
-            glEnd();
-            glLineWidth(1.0f);
-        } else {
-            // Small Grass Tuft
-            glColor3f(0.38f * (1.0f - nightFactor * 0.5f), 0.65f * (1.0f - nightFactor * 0.5f), 0.25f);
-            glBegin(GL_LINES);
-            glVertex2f(gd.x, GROUND_Y);
-            glVertex2f(gd.x - 3.0f, GROUND_Y + 7.0f);
-            glVertex2f(gd.x, GROUND_Y);
-            glVertex2f(gd.x + 1.0f, GROUND_Y + 9.0f);
-            glVertex2f(gd.x, GROUND_Y);
-            glVertex2f(gd.x + 4.0f, GROUND_Y + 6.0f);
-            glEnd();
-        }
+    glLineWidth(2.f);
+    for (const auto& b : bumps) {                        // small road bumps
+        glBegin(GL_LINE_STRIP);
+        glVertex2f(b.x, GROUND_Y); glVertex2f(b.x + 4, GROUND_Y + 4);
+        glVertex2f(b.x + b.w - 4, GROUND_Y + 4); glVertex2f(b.x + b.w, GROUND_Y);
+        glEnd();
     }
+    glLineWidth(1.f);
+
+    setColor(tone(0.75f));
+    for (const auto& d : dashes) fillRect(d.x, d.y, d.w, 2.f);
 }
 
-// -----------------------------------------------------------------------------
-// Runner Character Rendering
-// -----------------------------------------------------------------------------
 void renderRunner() {
-    glPushMatrix();
-    glTranslatef(runnerX, runnerY, 0.0f);
+    int frame = ((int)runAnim) % 2;
+    if (gState == STATE_START) frame = 0;
 
-    if (runnerTilt != 0.0f) {
-        glRotatef(runnerTilt, 0.0f, 0.0f, 1.0f);
-    }
-
-    float nightFactor = (currentPhase == PHASE_NIGHT) ? 0.7f : 0.0f;
-    ColorRGB skinColor = lerp(ColorRGB(0.98f, 0.82f, 0.68f), ColorRGB(0.65f, 0.60f, 0.70f), nightFactor);
-    ColorRGB shirtColor = ColorRGB(0.95f, 0.22f, 0.28f);  // Athletic crimson
-    ColorRGB pantsColor = ColorRGB(0.18f, 0.24f, 0.38f);  // Navy shorts
-    ColorRGB shoeColor  = ColorRGB(1.00f, 0.90f, 0.20f);  // Vibrant yellow shoes
-    ColorRGB visorColor = ColorRGB(0.20f, 0.90f, 1.00f);  // Cyan cyber visor
-
-    if (isDucking && isGrounded) {
-        // ---------------------------------------------------------------------
-        // DUCKING POSE (Low slide crouch)
-        // ---------------------------------------------------------------------
-        // Sliding dust emission
-        if (rand() % 3 == 0) {
-            spawnDust(runnerX - 10.0f, GROUND_Y + 2.0f, 1, -4.0f, 0.5f);
-        }
-
-        // Tilted crouching torso
-        glColor3f(shirtColor.r, shirtColor.g, shirtColor.b);
-        drawRect(0.0f, 10.0f, 38.0f, 18.0f);
-
-        // Head tucked forward
-        glColor3f(skinColor.r, skinColor.g, skinColor.b);
-        drawFilledCircle(38.0f, 20.0f, 11.0f, 16);
-
-        // Cyber Visor
-        glColor3f(visorColor.r, visorColor.g, visorColor.b);
-        drawRect(42.0f, 19.0f, 8.0f, 5.0f);
-
-        // Streamer Headband trailing back
-        glColor3f(0.95f, 0.85f, 0.15f);
-        glBegin(GL_TRIANGLES);
-        glVertex2f(32.0f, 24.0f);
-        glVertex2f(10.0f, 27.0f + sinf(runAnimPhase * 2.0f) * 3.0f);
-        glVertex2f(32.0f, 21.0f);
-        glEnd();
-
-        // Crouched bent legs
-        glColor3f(pantsColor.r, pantsColor.g, pantsColor.b);
-        drawRect(-12.0f, 6.0f, 22.0f, 12.0f);
-
-        // Sliding shoes on ground
-        glColor3f(shoeColor.r, shoeColor.g, shoeColor.b);
-        drawRect(-16.0f, 0.0f, 20.0f, 7.0f);
-        drawRect(18.0f, 0.0f, 16.0f, 7.0f);
-
-        // Arm bracing forward
-        glColor3f(skinColor.r, skinColor.g, skinColor.b);
-        drawRect(20.0f, 12.0f, 14.0f, 6.0f);
+    if (gState == STATE_GAME_OVER) {
+        drawDinoSprite(DINO_CRASH, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else if (ducking && grounded) {
+        drawDinoSprite(frame ? DINO_DUCK_B : DINO_DUCK_A, 19, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else if (!grounded) {
+        drawDinoSprite(DINO_JUMP, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
     } else {
-        // ---------------------------------------------------------------------
-        // STANDING / RUNNING / JUMPING POSE
-        // ---------------------------------------------------------------------
-        float legSwing = isGrounded ? sinf(runAnimPhase) * 22.0f : -15.0f;
-        float armSwing = isGrounded ? cosf(runAnimPhase) * 24.0f : 20.0f;
-
-        // --- LEGS ---
-        // Back leg (Pants + Calf + Shoe)
-        glPushMatrix();
-        glTranslatef(14.0f, 24.0f, 0.0f);
-        glRotatef(-legSwing, 0.0f, 0.0f, 1.0f);
-        glColor3f(pantsColor.r * 0.8f, pantsColor.g * 0.8f, pantsColor.b * 0.8f);
-        drawRect(-4.0f, -14.0f, 8.0f, 14.0f);
-        glColor3f(skinColor.r * 0.85f, skinColor.g * 0.85f, skinColor.b * 0.85f);
-        drawRect(-3.5f, -22.0f, 7.0f, 9.0f);
-        glColor3f(shoeColor.r * 0.85f, shoeColor.g * 0.85f, shoeColor.b * 0.85f);
-        drawRect(-4.0f, -26.0f, 14.0f, 6.0f);
-        glPopMatrix();
-
-        // --- TORSO ---
-        glColor3f(shirtColor.r, shirtColor.g, shirtColor.b);
-        drawRect(4.0f, 24.0f, 20.0f, 28.0f);
-        // Athletic stripe on jersey
-        glColor3f(1.0f, 1.0f, 1.0f);
-        drawRect(12.0f, 24.0f, 4.0f, 28.0f);
-
-        // --- BACK ARM ---
-        glPushMatrix();
-        glTranslatef(8.0f, 46.0f, 0.0f);
-        glRotatef(-armSwing, 0.0f, 0.0f, 1.0f);
-        glColor3f(skinColor.r * 0.85f, skinColor.g * 0.85f, skinColor.b * 0.85f);
-        drawRect(-3.0f, -16.0f, 6.0f, 16.0f);
-        glPopMatrix();
-
-        // --- FRONT LEG ---
-        glPushMatrix();
-        glTranslatef(14.0f, 24.0f, 0.0f);
-        glRotatef(legSwing, 0.0f, 0.0f, 1.0f);
-        glColor3f(pantsColor.r, pantsColor.g, pantsColor.b);
-        drawRect(-4.0f, -14.0f, 8.0f, 14.0f);
-        glColor3f(skinColor.r, skinColor.g, skinColor.b);
-        drawRect(-3.5f, -22.0f, 7.0f, 9.0f);
-        glColor3f(shoeColor.r, shoeColor.g, shoeColor.b);
-        drawRect(-4.0f, -26.0f, 14.0f, 6.0f);
-        glPopMatrix();
-
-        // --- HEAD ---
-        glColor3f(skinColor.r, skinColor.g, skinColor.b);
-        drawFilledCircle(14.0f, 58.0f, 11.0f, 18);
-
-        // Cyber Visor
-        glColor3f(visorColor.r, visorColor.g, visorColor.b);
-        drawRect(18.0f, 57.0f, 9.0f, 5.0f);
-
-        // Streamer Headband trailing back
-        glColor3f(0.95f, 0.85f, 0.15f);
-        glBegin(GL_TRIANGLES);
-        glVertex2f(8.0f, 63.0f);
-        glVertex2f(-16.0f, 64.0f + sinf(runAnimPhase * 2.0f) * 5.0f);
-        glVertex2f(8.0f, 59.0f);
-        glEnd();
-
-        // --- FRONT ARM ---
-        glPushMatrix();
-        glTranslatef(18.0f, 46.0f, 0.0f);
-        glRotatef(armSwing, 0.0f, 0.0f, 1.0f);
-        glColor3f(skinColor.r, skinColor.g, skinColor.b);
-        drawRect(-3.0f, -16.0f, 6.0f, 16.0f);
-        // Fist/glove
-        glColor3f(pantsColor.r, pantsColor.g, pantsColor.b);
-        drawFilledCircle(0.0f, -17.0f, 4.0f, 8);
-        glPopMatrix();
+        drawDinoSprite(frame ? DINO_RUN_B : DINO_RUN_A, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
     }
-
-    glPopMatrix();
 }
 
-// -----------------------------------------------------------------------------
-// Obstacles Rendering
-// -----------------------------------------------------------------------------
+// Traffic cone silhouette with two background-coloured reflective bands
+void drawCone(float ox) {
+    setColor(inkCol);
+    fillRect(ox, 0, 26, 4);
+    glBegin(GL_QUADS);
+    glVertex2f(ox + 3, 4); glVertex2f(ox + 23, 4); glVertex2f(ox + 15, 44); glVertex2f(ox + 11, 44);
+    glEnd();
+    setColor(bgCol);
+    glBegin(GL_QUADS);
+    glVertex2f(ox + 5.8f, 18); glVertex2f(ox + 20.2f, 18); glVertex2f(ox + 18.8f, 25); glVertex2f(ox + 7.2f, 25);
+    glVertex2f(ox + 8.6f, 32); glVertex2f(ox + 17.4f, 32); glVertex2f(ox + 16.6f, 36); glVertex2f(ox + 9.4f, 36);
+    glEnd();
+}
+
 void renderObstacles() {
-    float nightFactor = (currentPhase == PHASE_NIGHT) ? 0.7f : (currentPhase == PHASE_SUNSET ? 0.3f : 0.0f);
-
-    for (const auto& obs : obstacles) {
+    for (const auto& o : obstacles) {
         glPushMatrix();
-        glTranslatef(obs.x, obs.y, 0.0f);
-
-        if (obs.type == OBS_CACTUS_SMALL) {
-            ColorRGB cactusCol = lerp(ColorRGB(0.18f, 0.62f, 0.28f), ColorRGB(0.10f, 0.32f, 0.20f), nightFactor);
-            glColor3f(cactusCol.r, cactusCol.g, cactusCol.b);
-            // Main trunk
-            drawRect(8.0f, 0.0f, 10.0f, 46.0f);
-            drawFilledCircle(13.0f, 46.0f, 5.0f, 12);
-            // Left branch
-            drawRect(0.0f, 16.0f, 8.0f, 6.0f);
-            drawRect(0.0f, 22.0f, 6.0f, 14.0f);
-            drawFilledCircle(3.0f, 36.0f, 3.0f, 8);
-            // Right branch
-            drawRect(18.0f, 22.0f, 8.0f, 6.0f);
-            drawRect(20.0f, 28.0f, 6.0f, 12.0f);
-            drawFilledCircle(23.0f, 40.0f, 3.0f, 8);
-        } else if (obs.type == OBS_CACTUS_DOUBLE) {
-            ColorRGB cactusCol = lerp(ColorRGB(0.15f, 0.58f, 0.25f), ColorRGB(0.08f, 0.28f, 0.18f), nightFactor);
-            glColor3f(cactusCol.r, cactusCol.g, cactusCol.b);
-            // First taller cactus
-            drawRect(6.0f, 0.0f, 11.0f, 54.0f);
-            drawFilledCircle(11.5f, 54.0f, 5.5f, 12);
-            drawRect(0.0f, 24.0f, 7.0f, 6.0f);
-            drawRect(0.0f, 30.0f, 6.0f, 14.0f);
-            // Second smaller cactus
-            drawRect(24.0f, 0.0f, 10.0f, 40.0f);
-            drawFilledCircle(29.0f, 40.0f, 5.0f, 12);
-            drawRect(33.0f, 18.0f, 7.0f, 5.0f);
-            drawRect(35.0f, 23.0f, 5.0f, 10.0f);
-        } else if (obs.type == OBS_CACTUS_TALL) {
-            ColorRGB cactusCol = lerp(ColorRGB(0.14f, 0.54f, 0.24f), ColorRGB(0.07f, 0.26f, 0.16f), nightFactor);
-            glColor3f(cactusCol.r, cactusCol.g, cactusCol.b);
-            // Very tall cactus with multiple arms
-            drawRect(10.0f, 0.0f, 12.0f, 68.0f);
-            drawFilledCircle(16.0f, 68.0f, 6.0f, 12);
-            // Left low arm
-            drawRect(0.0f, 20.0f, 10.0f, 7.0f);
-            drawRect(0.0f, 27.0f, 7.0f, 18.0f);
-            drawFilledCircle(3.5f, 45.0f, 3.5f, 8);
-            // Right high arm
-            drawRect(22.0f, 34.0f, 10.0f, 7.0f);
-            drawRect(25.0f, 41.0f, 7.0f, 16.0f);
-            drawFilledCircle(28.5f, 57.0f, 3.5f, 8);
-        } else if (obs.type == OBS_ROCK) {
-            // Jagged Boulder
-            ColorRGB rockCol = lerp(ColorRGB(0.55f, 0.50f, 0.45f), ColorRGB(0.20f, 0.22f, 0.30f), nightFactor);
-            glColor3f(rockCol.r, rockCol.g, rockCol.b);
-            glBegin(GL_POLYGON);
-            glVertex2f(0.0f, 0.0f);
-            glVertex2f(6.0f, 18.0f);
-            glVertex2f(16.0f, 26.0f);
-            glVertex2f(28.0f, 22.0f);
-            glVertex2f(38.0f, 12.0f);
-            glVertex2f(36.0f, 0.0f);
-            glEnd();
-            // Highlight facet
-            glColor3f(rockCol.r * 1.25f, rockCol.g * 1.25f, rockCol.b * 1.25f);
-            glBegin(GL_TRIANGLES);
-            glVertex2f(6.0f, 18.0f);
-            glVertex2f(16.0f, 26.0f);
-            glVertex2f(20.0f, 10.0f);
-            glEnd();
-        } else if (obs.type == OBS_BIRD_HIGH || obs.type == OBS_BIRD_LOW) {
-            // Flying Pterodactyl / Cyber Bird
-            ColorRGB birdCol = lerp(ColorRGB(0.85f, 0.30f, 0.25f), ColorRGB(0.40f, 0.20f, 0.45f), nightFactor);
-            glColor3f(birdCol.r, birdCol.g, birdCol.b);
-
-            // Flapping wing calculation
-            float wingPhase = sinf(obs.animTimer * 12.0f);
-            float wingOffset = wingPhase * 16.0f;
-
-            // Torso / Body
-            glBegin(GL_POLYGON);
-            glVertex2f(12.0f, 10.0f);
-            glVertex2f(30.0f, 12.0f);
-            glVertex2f(38.0f, 16.0f);
-            glVertex2f(30.0f, 18.0f);
-            glVertex2f(10.0f, 14.0f);
-            glVertex2f(0.0f, 12.0f); // tail
-            glEnd();
-
-            // Head and sharp beak
-            glColor3f(0.95f, 0.75f, 0.15f); // Gold beak
-            glBegin(GL_TRIANGLES);
-            glVertex2f(36.0f, 18.0f);
-            glVertex2f(46.0f, 14.0f);
-            glVertex2f(36.0f, 12.0f);
-            glEnd();
-
-            // Glowing eye
-            glColor3f(0.1f, 1.0f, 0.9f);
-            drawFilledCircle(34.0f, 16.0f, 2.0f, 6);
-
-            // Wings (Flapping dynamically)
-            glColor3f(birdCol.r * 1.15f, birdCol.g * 1.15f, birdCol.b * 1.15f);
-            glBegin(GL_TRIANGLES);
-            glVertex2f(18.0f, 14.0f);
-            glVertex2f(28.0f, 14.0f);
-            glVertex2f(22.0f, 14.0f + wingOffset);
-            glEnd();
+        glTranslatef(o.x, o.y, 0.f);
+        switch (o.type) {
+            case OBS_CONE:  drawCone(0);  break;
+            case OBS_CONE2: drawCone(0); drawCone(28); break;
+            case OBS_BARRIER: {
+                setColor(inkCol);
+                fillRect(6, 0, 5, 24);  fillRect(45, 0, 5, 24);   // legs
+                fillRect(2, 0, 13, 3);  fillRect(41, 0, 13, 3);   // feet
+                fillRect(0, 22, 56, 16);                          // plank
+                fillRect(26, 38, 4, 4);                           // warning lamp
+                setColor(bgCol);                                  // diagonal stripes
+                glBegin(GL_QUADS);
+                for (int i = 0; i < 4; ++i) {
+                    float x0 = 4.f + i * 13.f;
+                    float x1 = std::min(x0 + 12.f, 54.f);
+                    glVertex2f(x0, 25); glVertex2f(x0 + 5, 25);
+                    glVertex2f(x1, 35); glVertex2f(x1 - 5, 35);
+                }
+                glEnd();
+                break;
+            }
+            case OBS_BOLLARD: {
+                float hs[3] = { 38.f, 48.f, 38.f };
+                for (int i = 0; i < 3; ++i) {
+                    float bx = i * 16.f, h = hs[i];
+                    setColor(inkCol);
+                    fillRect(bx, 0, 12, h - 6);
+                    fillCircle(bx + 6, h - 6, 6, 14);
+                    setColor(bgCol);
+                    fillRect(bx, h - 20, 12, 4);
+                }
+                break;
+            }
+            case OBS_DRONE_HIGH:
+            case OBS_DRONE_LOW: {
+                setColor(inkCol);
+                fillRect(10, 6, 34, 10);          // body
+                fillCircle(27, 16, 7, 16);        // dome
+                fillRect(0, 16, 54, 3);           // arms
+                fillRect(14, 0, 3, 6); fillRect(37, 0, 3, 6); // legs
+                float rw = 4.f + 14.f * fabsf(cosf(o.anim * 20.f)); // spinning rotors
+                fillRect(5 - rw * 0.5f, 21, rw, 2); fillRect(49 - rw * 0.5f, 21, rw, 2);
+                setColor(bgCol);
+                fillRect(32, 10, 5, 3);           // camera lens
+                break;
+            }
         }
-
         glPopMatrix();
     }
 }
 
-// -----------------------------------------------------------------------------
-// Particles Rendering
-// -----------------------------------------------------------------------------
 void renderParticles() {
+    glBegin(GL_QUADS);
     for (const auto& p : particles) {
-        glColor3f(p.color.r * p.life, p.color.g * p.life, p.color.b * p.life);
-        drawFilledCircle(p.x, p.y, p.size * p.life, 8);
+        setColor(tone(p.life * 0.8f));
+        glVertex2f(p.x, p.y); glVertex2f(p.x + p.size, p.y);
+        glVertex2f(p.x + p.size, p.y + p.size); glVertex2f(p.x, p.y + p.size);
     }
+    glEnd();
 }
 
-// -----------------------------------------------------------------------------
-// Hitbox Visualizer (For Professor / Lab Grading Demo)
-// -----------------------------------------------------------------------------
+RectAABB runnerBox() {
+    if (ducking && grounded) return { rX + 16.f, rY, 78.f, 36.f };
+    return                          { rX + 38.f, rY, 48.f, 68.f };
+}
+RectAABB obstBox(const Obstacle& o) { return { o.x + 4.f, o.y, o.w - 8.f, o.h - 2.f }; }
+
 void renderHitboxes() {
-    if (!showHitboxes) return;
-
-    glLineWidth(2.0f);
-
-    // Runner Hitbox (Bright Green)
-    glColor3f(0.0f, 1.0f, 0.0f);
-    RectAABB runnerBox;
-    if (isDucking && isGrounded) {
-        runnerBox = { runnerX + HITBOX_PADDING_X, runnerY, RUNNER_WIDTH_DUCK - HITBOX_PADDING_X * 2, RUNNER_HEIGHT_DUCK };
-    } else {
-        runnerBox = { runnerX + HITBOX_PADDING_X, runnerY, RUNNER_WIDTH_STAND - HITBOX_PADDING_X * 2, RUNNER_HEIGHT_STAND - HITBOX_PADDING_Y };
-    }
-    drawRectOutline(runnerBox.x, runnerBox.y, runnerBox.width, runnerBox.height);
-
-    // Obstacle Hitboxes (Bright Red)
-    glColor3f(1.0f, 0.0f, 0.0f);
-    for (const auto& obs : obstacles) {
-        drawRectOutline(obs.x + 3.0f, obs.y, obs.width - 6.0f, obs.height - 2.0f);
-    }
-
-    glLineWidth(1.0f);
+    if (!showHB) return;
+    glLineWidth(2.f);
+    glColor3f(0.1f, 0.8f, 0.2f);
+    RectAABB r = runnerBox(); outlineRect(r.x, r.y, r.w, r.h);
+    glColor3f(0.9f, 0.15f, 0.15f);
+    for (const auto& o : obstacles) { RectAABB b = obstBox(o); outlineRect(b.x, b.y, b.w, b.h); }
+    glLineWidth(1.f);
 }
 
-// -----------------------------------------------------------------------------
-// HUD & UI Overlays
-// -----------------------------------------------------------------------------
+void drawRestartIcon(float cx, float cy) {
+    setColor(inkCol);
+    glLineWidth(3.f);
+    glBegin(GL_LINE_STRIP);
+    for (int i = 0; i <= 24; ++i) {
+        float a = (40.f + i * (280.f / 24.f)) * (float)M_PI / 180.f;
+        glVertex2f(cx + cosf(a) * 14.f, cy + sinf(a) * 14.f);
+    }
+    glEnd();
+    glLineWidth(1.f);
+    float ex = cx + cosf(40.f * (float)M_PI / 180.f) * 14.f;
+    float ey = cy + sinf(40.f * (float)M_PI / 180.f) * 14.f;
+    glBegin(GL_TRIANGLES);
+    glVertex2f(ex - 7, ey + 2); glVertex2f(ex + 5, ey + 6); glVertex2f(ex + 3, ey - 7);
+    glEnd();
+}
+
 void renderHUD() {
-    // Top Bar Background Ribbon (Subtle translucent glass)
-    glColor4f(0.0f, 0.0f, 0.0f, 0.35f);
-    drawRect(0.0f, WINDOW_HEIGHT - 48.0f, WINDOW_WIDTH, 48.0f);
+    void* mono = GLUT_BITMAP_9_BY_15;
 
-    // Score & High Score Text
-    std::stringstream ssScore, ssHigh, ssSpeed;
-    ssScore << "SCORE: " << std::setfill('0') << std::setw(5) << (int)score;
-    ssHigh  << "HI: "    << std::setfill('0') << std::setw(5) << highScore;
-    ssSpeed << "SPEED: " << std::fixed << std::setprecision(1) << (gameSpeed / BASE_SPEED) << "x";
+    // Score (top-right, Chrome style). Current score blinks at every 100 pts.
+    std::stringstream hi, cur;
+    hi  << "HI " << std::setfill('0') << std::setw(5) << highScore;
+    cur << std::setfill('0') << std::setw(5) << (int)score;
+    float curW = strW(cur.str(), mono);
+    setColor(tone(0.70f));
+    drawStr(WIN_W - 30.f - curW - 20.f - strW(hi.str(), mono), WIN_H - 40.f, hi.str(), mono);
+    bool hideCur = blinkTimer > 0.f && fmodf(blinkTimer, 0.3f) < 0.15f;
+    if (!hideCur) { setColor(inkCol); drawStr(WIN_W - 30.f - curW, WIN_H - 40.f, cur.str(), mono); }
 
-    glColor3f(1.0f, 1.0f, 1.0f);
-    drawText(24.0f, WINDOW_HEIGHT - 32.0f, ssScore.str());
+    // Time-of-day indicator (top-left)
+    const char* names[4] = { "DAWN", "DAY", "DUSK", "NIGHT" };
+    setColor(tone(0.60f));
+    drawStr(30.f, WIN_H - 40.f, names[gPhase], mono);
+    if (showHB) drawStr(100.f, WIN_H - 40.f, "[HITBOX]", mono);
 
-    glColor3f(0.85f, 0.85f, 0.85f);
-    drawText(220.0f, WINDOW_HEIGHT - 32.0f, ssHigh.str());
+    // Bottom help line
+    setColor(tone(0.50f));
+    if (gState != STATE_START)
+        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   P pause   R restart   H hitbox   M sound: "
+                 + (soundOn ? "on" : "off") + "   ESC quit",
+                 GLUT_BITMAP_8_BY_13);
 
-    glColor3f(0.3f, 0.95f, 0.85f);
-    drawText(400.0f, WINDOW_HEIGHT - 32.0f, ssSpeed.str());
-
-    // Day/Night Indicator Icon and Text
-    std::string phaseStr = "DAY";
-    ColorRGB phaseColor(1.0f, 0.9f, 0.2f);
-    if (currentPhase == PHASE_DAWN) {
-        phaseStr = "DAWN";
-        phaseColor = ColorRGB(1.0f, 0.6f, 0.3f);
-    } else if (currentPhase == PHASE_SUNSET) {
-        phaseStr = "SUNSET";
-        phaseColor = ColorRGB(1.0f, 0.4f, 0.2f);
-    } else if (currentPhase == PHASE_NIGHT) {
-        phaseStr = "NIGHT";
-        phaseColor = ColorRGB(0.5f, 0.8f, 1.0f);
-    }
-
-    // Mini Celestial Icon
-    glColor3f(phaseColor.r, phaseColor.g, phaseColor.b);
-    drawFilledCircle(585.0f, WINDOW_HEIGHT - 28.0f, 7.0f, 12);
-
-    drawText(602.0f, WINDOW_HEIGHT - 32.0f, "TIME: " + phaseStr);
-
-    // Hitbox Debug Indicator
-    if (showHitboxes) {
-        glColor3f(0.2f, 1.0f, 0.2f);
-        drawText(750.0f, WINDOW_HEIGHT - 32.0f, "[HITBOX ON]");
-    }
-
-    // Sound Indicator
-    if (soundEnabled) {
-        glColor3f(0.7f, 1.0f, 0.7f);
-        drawText(890.0f, WINDOW_HEIGHT - 32.0f, "SND: ON");
-    } else {
-        glColor3f(0.9f, 0.4f, 0.4f);
-        drawText(890.0f, WINDOW_HEIGHT - 32.0f, "SND: OFF");
-    }
-
-    // Bottom Help Controls Ribbon
-    glColor3f(0.85f, 0.85f, 0.85f);
-    drawText(18.0f, 16.0f, "[SPACE / UP] Jump    [DOWN] Duck    [P] Pause    [R] Restart    [H] Hitboxes    [M] Mute    [ESC] Quit", GLUT_BITMAP_8_BY_13);
-
-    // Overlay Screens based on Game State
-    if (gameState == STATE_START) {
-        // Dark translucent overlay
-        glColor4f(0.05f, 0.08f, 0.16f, 0.82f);
-        drawRect(0.0f, 0.0f, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-        // Title Banner Box
-        glColor3f(0.12f, 0.16f, 0.26f);
-        drawRect(150.0f, 150.0f, 700.0f, 320.0f);
-        glColor3f(0.25f, 0.75f, 0.95f);
-        drawRectOutline(150.0f, 150.0f, 700.0f, 320.0f);
-
-        // Title
-        glColor3f(1.0f, 0.85f, 0.20f);
-        drawText(310.0f, 410.0f, "CHRONO RUN: DN DASH", GLUT_BITMAP_TIMES_ROMAN_24);
-
-        glColor3f(0.75f, 0.85f, 0.95f);
-        drawText(275.0f, 375.0f, "Computer Graphics & Image Processing Lab (CSE-402)");
-
-        glColor3f(1.0f, 1.0f, 1.0f);
-        drawText(295.0f, 325.0f, "Press [SPACEBAR] or [UP ARROW] to Start Running");
-
-        glColor3f(0.85f, 0.85f, 0.85f);
-        drawText(320.0f, 280.0f, "Controls: JUMP over rocks & low birds");
-        drawText(320.0f, 255.0f, "          DUCK under high-flying birds");
-
-        glColor3f(0.60f, 0.70f, 0.85f);
-        drawText(220.0f, 190.0f, "Project by: Nahdiul Islam Rony (231-115-069) & Abu Ubayda (231-115-080)");
-        drawText(340.0f, 168.0f, "Lecturer: Shrabanti Chowdhury | Section B");
-    } else if (gameState == STATE_PAUSED) {
-        glColor4f(0.05f, 0.08f, 0.15f, 0.65f);
-        drawRect(0.0f, 0.0f, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-        glColor3f(0.15f, 0.20f, 0.32f);
-        drawRect(300.0f, 220.0f, 400.0f, 160.0f);
-        glColor3f(0.35f, 0.85f, 1.0f);
-        drawRectOutline(300.0f, 220.0f, 400.0f, 160.0f);
-
-        glColor3f(1.0f, 0.85f, 0.20f);
-        drawText(430.0f, 325.0f, "PAUSED", GLUT_BITMAP_TIMES_ROMAN_24);
-
-        glColor3f(1.0f, 1.0f, 1.0f);
-        drawText(360.0f, 275.0f, "Press [P] to Resume  |  [R] to Restart");
-    } else if (gameState == STATE_GAME_OVER) {
-        // Red tinted game over overlay
-        glColor4f(0.15f, 0.02f, 0.04f, 0.75f);
-        drawRect(0.0f, 0.0f, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-        glColor3f(0.22f, 0.10f, 0.12f);
-        drawRect(260.0f, 180.0f, 480.0f, 240.0f);
-        glColor3f(0.95f, 0.25f, 0.30f);
-        drawRectOutline(260.0f, 180.0f, 480.0f, 240.0f);
-
-        // Game Over Banner
-        glColor3f(1.0f, 0.2f, 0.25f);
-        drawText(410.0f, 370.0f, "GAME OVER", GLUT_BITMAP_TIMES_ROMAN_24);
-
-        std::stringstream ssFinal;
-        ssFinal << "FINAL SCORE: " << (int)score;
-        glColor3f(1.0f, 1.0f, 1.0f);
-        drawText(415.0f, 320.0f, ssFinal.str());
-
-        if ((int)score >= highScore && score > 10.0f) {
-            glColor3f(1.0f, 0.85f, 0.20f);
-            drawText(400.0f, 285.0f, "*** NEW HIGH SCORE! ***");
-        } else {
-            std::stringstream ssHiCmp;
-            ssHiCmp << "BEST SCORE: " << highScore;
-            glColor3f(0.8f, 0.85f, 0.9f);
-            drawText(415.0f, 285.0f, ssHiCmp.str());
+    if (gState == STATE_START) {
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 300.f, "CHRONO RUN : DN DASH", GLUT_BITMAP_TIMES_ROMAN_24);
+        setColor(tone(0.80f));
+        drawStrC(WIN_W * 0.5f, 265.f, "Press SPACE to start", mono);
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 240.f, "Jump over cones, barriers & bollards  -  Duck under high drones", GLUT_BITMAP_8_BY_13);
+        setColor(curBodyCol);
+        drawStrC(WIN_W * 0.5f, 218.f, std::string("Dino Theme: [T] ") + THEMES[currentTheme].name, mono);
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 200.f, "Made by - Ubayda & Rony", mono);
+        setColor(tone(0.50f));
+        drawStrC(WIN_W * 0.5f, 50.f, "Nahdiul Islam Rony (231-115-069)  &  Abu Ubayda (231-115-080)", GLUT_BITMAP_8_BY_13);
+        drawStrC(WIN_W * 0.5f, 32.f, "CSE-402 CG & IP Lab  |  Lecturer: Shrabanti Chowdhury  |  Section B", GLUT_BITMAP_8_BY_13);
+    } else if (gState == STATE_PAUSED) {
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 280.f, "P A U S E D", GLUT_BITMAP_TIMES_ROMAN_24);
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 250.f, "Press P to resume", mono);
+        drawStrC(WIN_W * 0.5f, 215.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
+    } else if (gState == STATE_GAME_OVER) {
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 300.f, "G A M E   O V E R", GLUT_BITMAP_TIMES_ROMAN_24);
+        drawRestartIcon(WIN_W * 0.5f, 262.f);
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 222.f, "Press SPACE or R to restart", mono);
+        if ((int)score >= highScore && score > 5.f) {
+            setColor(inkCol);
+            drawStrC(WIN_W * 0.5f, 198.f, "NEW HIGH SCORE!", mono);
         }
-
-        glColor3f(0.3f, 0.9f, 1.0f);
-        drawText(340.0f, 225.0f, "Press [R] or [SPACEBAR] to Play Again");
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 172.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
     }
 }
 
-// -----------------------------------------------------------------------------
-// Display Callback
-// -----------------------------------------------------------------------------
 void display() {
+    updatePalette();
+    glClearColor(bgCol.r, bgCol.g, bgCol.b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // 1. Sky Gradient, Sun, Moon, Stars, Distant Mountains, Clouds
-    renderSkyAndLighting();
-
-    // 2. Ground and Dynamic Ground Pebbles / Grass
+    renderBackground();
     renderGround();
-
-    // 3. Obstacles (Cacti, Rocks, Birds)
     renderObstacles();
-
-    // 4. Runner Character
     renderRunner();
-
-    // 5. Particle Effects (Dust, Sparks, Explosions)
     renderParticles();
-
-    // 6. Debug Hitboxes (Toggle with 'H')
     renderHitboxes();
-
-    // 7. HUD Text and Overlays
     renderHUD();
 
     glutSwapBuffers();
 }
 
-// -----------------------------------------------------------------------------
-// Physics and Game Logic Update
-// -----------------------------------------------------------------------------
-void updateGame() {
-    if (gameState != STATE_PLAYING) return;
-
-    // 1. Update Day-Night Cycle Timer
-    cycleTimer += 1.0f / TARGET_FPS;
-
-    // 2. Update Score and Progressive Speed
-    score += (gameSpeed / BASE_SPEED) * 0.18f;
-    if ((int)score > highScore) {
-        highScore = (int)score;
-    }
-
-    // Sound milestone every 100 points
-    static int lastMilestone = 0;
-    if ((int)score / 100 > lastMilestone) {
-        lastMilestone = (int)score / 100;
-        soundScoreMilestone();
-    }
-
-    // Gradually scale speed with score
-    if (gameSpeed < MAX_SPEED) {
-        gameSpeed = BASE_SPEED + (score * 0.0042f);
-        if (gameSpeed > MAX_SPEED) gameSpeed = MAX_SPEED;
-    }
-
-    // 3. Runner Physics & Jump Trajectory
-    if (!isGrounded) {
-        runnerVelocityY -= GRAVITY;
-        runnerY += runnerVelocityY;
-
-        if (runnerY <= GROUND_Y) {
-            runnerY = GROUND_Y;
-            runnerVelocityY = 0.0f;
-            isGrounded = true;
-            // Spawn landing dust puff
-            spawnDust(runnerX + 10.0f, GROUND_Y, 8, -2.5f, 1.8f);
-        }
-    }
-
-    // Run animation phase
-    runAnimPhase += 0.28f * (gameSpeed / BASE_SPEED);
-    if (isGrounded && !isDucking) {
-        // Kick up subtle running dust occasionally
-        if (rand() % 6 == 0) {
-            spawnDust(runnerX - 4.0f, GROUND_Y + 2.0f, 1, -3.5f, 0.8f);
-        }
-    }
-
-    // 4. Update Clouds & Mountains Parallax
-    for (auto& c : clouds) {
-        c.x -= c.speed * (gameSpeed / BASE_SPEED) * 0.5f;
-        if (c.x < -80.0f) {
-            c.x = WINDOW_WIDTH + 40.0f + (rand() % 60);
-            c.y = 360.0f + (rand() % 160);
-        }
-    }
-
-    float mtnStep = (float)WINDOW_WIDTH / (MOUNTAIN_COUNT - 2);
-    for (int i = 0; i < MOUNTAIN_COUNT; ++i) {
-        farMountainX[i] -= gameSpeed * 0.12f;
-        nearHillX[i]    -= gameSpeed * 0.35f;
-    }
-    // Wrap mountains smoothly
-    for (int i = 0; i < MOUNTAIN_COUNT; ++i) {
-        if (farMountainX[i] < -mtnStep) {
-            farMountainX[i] += (MOUNTAIN_COUNT - 1) * mtnStep;
-        }
-        if (nearHillX[i] < -mtnStep) {
-            nearHillX[i] += (MOUNTAIN_COUNT - 1) * mtnStep;
-        }
-    }
-
-    // 5. Update Ground Details
-    for (auto& gd : groundDetails) {
-        gd.x -= gameSpeed;
-        if (gd.x < -20.0f) {
-            gd.x = WINDOW_WIDTH + (rand() % 40);
-            gd.y = (rand() % (int)GROUND_Y);
-            gd.width = 6.0f + (rand() % 14);
-            gd.type = rand() % 3;
-        }
-    }
-
-    // 6. Obstacle Spawning Logic
-    static float spawnDistanceAccum = 0.0f;
-    static float nextSpawnDistance = 320.0f;
-
-    spawnDistanceAccum += gameSpeed;
-    if (spawnDistanceAccum >= nextSpawnDistance) {
-        spawnObstacle();
-        spawnDistanceAccum = 0.0f;
-        // Higher speeds require larger spacing for reaction time
-        float minGap = 260.0f + (gameSpeed - BASE_SPEED) * 18.0f;
-        float randGap = (float)(rand() % 240);
-        nextSpawnDistance = minGap + randGap;
-    }
-
-    // 7. Update Obstacles and Collision Checking
-    RectAABB runnerBox;
-    if (isDucking && isGrounded) {
-        runnerBox = { runnerX + HITBOX_PADDING_X, runnerY, RUNNER_WIDTH_DUCK - HITBOX_PADDING_X * 2, RUNNER_HEIGHT_DUCK };
-    } else {
-        runnerBox = { runnerX + HITBOX_PADDING_X, runnerY, RUNNER_WIDTH_STAND - HITBOX_PADDING_X * 2, RUNNER_HEIGHT_STAND - HITBOX_PADDING_Y };
-    }
-
-    for (size_t i = 0; i < obstacles.size(); ) {
-        obstacles[i].x -= gameSpeed;
-        obstacles[i].animTimer += 1.0f / TARGET_FPS;
-
-        // Collision Check
-        RectAABB obsBox = { obstacles[i].x + 3.0f, obstacles[i].y, obstacles[i].width - 6.0f, obstacles[i].height - 2.0f };
-        if (checkAABBCollision(runnerBox, obsBox)) {
-            // CRASH / GAME OVER!
-            gameState = STATE_GAME_OVER;
-            soundGameOver();
-            spawnCrashExplosion(runnerX + 20.0f, runnerY + 30.0f);
-            break;
-        }
-
-        // Clean up off-screen obstacles
-        if (obstacles[i].x + obstacles[i].width < -50.0f) {
-            obstacles.erase(obstacles.begin() + i);
-        } else {
-            ++i;
-        }
-    }
-
-    // 8. Update Particles
-    for (size_t i = 0; i < particles.size(); ) {
-        particles[i].x += particles[i].vx;
-        particles[i].y += particles[i].vy;
-        particles[i].life -= particles[i].decay;
-
-        if (particles[i].life <= 0.0f) {
-            particles.erase(particles.begin() + i);
-        } else {
-            ++i;
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Timer Callback for 60 FPS Loop
-// -----------------------------------------------------------------------------
-void timerCallback(int value) {
-    updateGame();
-    glutPostRedisplay();
-    glutTimerFunc(FRAME_DELAY_MS, timerCallback, 0);
-}
-
-// -----------------------------------------------------------------------------
-// Keyboard Input Callbacks
-// -----------------------------------------------------------------------------
-void handleKeyDown(unsigned char key, int x, int y) {
-    if (key == 27) { // ESC
-        exit(0);
-    }
-
-    if (key == 'p' || key == 'P') {
-        if (gameState == STATE_PLAYING) {
-            gameState = STATE_PAUSED;
-        } else if (gameState == STATE_PAUSED) {
-            gameState = STATE_PLAYING;
-        }
-        return;
-    }
-
-    if (key == 'r' || key == 'R') {
-        resetGame();
-        return;
-    }
-
-    if (key == 'h' || key == 'H') {
-        showHitboxes = !showHitboxes;
-        return;
-    }
-
-    if (key == 'm' || key == 'M') {
-        soundEnabled = !soundEnabled;
-        return;
-    }
-
-    if (key == ' ') { // Spacebar Jump
-        if (gameState == STATE_START) {
-            gameState = STATE_PLAYING;
-        } else if (gameState == STATE_GAME_OVER) {
-            resetGame();
-        } else if (gameState == STATE_PLAYING) {
-            if (isGrounded) {
-                runnerVelocityY = JUMP_FORCE;
-                isGrounded = false;
-                soundJump();
-                spawnDust(runnerX + 10.0f, GROUND_Y, 6, -2.0f, 1.2f);
+// ============================================================================
+// Update (dt = elapsed time measured in 60fps frames -> frame-rate independent)
+// ============================================================================
+void scrollWorld(float dt) {
+    // Parallax layers
+    auto scrollLayer = [&](std::vector<Building>& L, float k, bool isFar) {
+        float maxRight = 0.f;
+        for (auto& b : L) { b.x -= gameSpeed * k * dt; maxRight = std::max(maxRight, b.x + b.w); }
+        for (auto& b : L) {
+            if (b.x + b.w < 0.f) {
+                Building nb = makeBuilding(maxRight + (isFar ? frand(4, 30) : frand(20, 90)), isFar);
+                b = nb;
+                maxRight = b.x + b.w;
             }
         }
+    };
+    scrollLayer(farB, 0.10f, true);
+    scrollLayer(nearB, 0.25f, false);
+
+    for (auto& c : clouds) {
+        c.x -= 0.25f * dt;
+        if (c.x < -100.f) { c.x = WIN_W + frand(20, 200); c.y = frand(250, 360); }
+    }
+    for (auto& d : dashes) {
+        d.x -= gameSpeed * dt;
+        if (d.x < -12.f) { d.x = WIN_W + frand(0, 40); d.y = frand(GROUND_Y - 30, GROUND_Y - 6); d.w = frand(2, 10); }
+    }
+    for (auto& b : bumps) {
+        b.x -= gameSpeed * dt;
+        if (b.x < -40.f) { b.x = WIN_W + frand(50, 500); b.w = frand(14, 30); }
     }
 }
 
-void handleKeyUp(unsigned char key, int x, int y) {
-    // Variable jump height: release early cuts upward velocity
-    if (key == ' ') {
-        if (!isGrounded && runnerVelocityY > 4.0f) {
-            runnerVelocityY *= 0.55f;
+void updateGame(float dt) {
+    if (gState != STATE_PLAYING) {
+        // Let crash particles settle on game over
+        for (size_t i = 0; i < particles.size(); ) {
+            particles[i].x += particles[i].vx * dt; particles[i].y += particles[i].vy * dt;
+            particles[i].life -= particles[i].decay * dt;
+            if (particles[i].life <= 0.f) particles.erase(particles.begin() + i); else ++i;
         }
+        return;
+    }
+
+    cycleT += dt / 60.f;
+
+    // Score and gentle speed progression
+    score += 0.1f * (gameSpeed / BASE_SPEED) * dt;
+    if ((int)score > highScore) highScore = (int)score;
+    gameSpeed = BASE_SPEED + score * SPEED_RAMP;
+    if (gameSpeed > MAX_SPEED) gameSpeed = MAX_SPEED;
+
+    if ((int)score / 100 > lastMile) { lastMile = (int)score / 100; blinkTimer = 1.2f; playSnd(sndScore); }
+    if (blinkTimer > 0.f) blinkTimer -= dt / 60.f;
+
+    // Jump physics (holding DOWN in the air = fast fall)
+    if (!grounded) {
+        rVY -= GRAVITY * dt;
+        if (ducking) rVY -= GRAVITY * 1.5f * dt;
+        rY += rVY * dt;
+        if (rY <= GROUND_Y) { rY = GROUND_Y; rVY = 0.f; grounded = true; spawnDust(rX + 20.f, GROUND_Y, 5); }
+    }
+
+    runAnim += 0.15f * (gameSpeed / BASE_SPEED) * dt;
+
+    scrollWorld(dt);
+
+    // Spawning: generous gaps that grow with speed
+    spawnAcc += gameSpeed * dt;
+    if (spawnAcc >= nextSpawn) {
+        spawnObstacle();
+        spawnAcc  = 0.f;
+        nextSpawn = 380.f + (gameSpeed - BASE_SPEED) * 40.f + frand(0, 340);
+    }
+
+    // Obstacles + AABB collision
+    RectAABB rb = runnerBox();
+    for (size_t i = 0; i < obstacles.size(); ) {
+        obstacles[i].x    -= gameSpeed * dt;
+        obstacles[i].anim += dt / 60.f;
+        if (aabbCollide(rb, obstBox(obstacles[i]))) {
+            gState = STATE_GAME_OVER;
+            playSnd(sndOver);
+            for (int k = 0; k < 14; ++k)
+                particles.push_back({ rX + 30.f, rY + 40.f, frand(-3, 3), frand(-1, 4), 1.f, frand(0.02f, 0.04f), frand(3, 5) });
+            break;
+        }
+        if (obstacles[i].x + obstacles[i].w < -50.f) obstacles.erase(obstacles.begin() + i);
+        else ++i;
+    }
+
+    for (size_t i = 0; i < particles.size(); ) {
+        particles[i].x += particles[i].vx * dt; particles[i].y += particles[i].vy * dt;
+        particles[i].life -= particles[i].decay * dt;
+        if (particles[i].life <= 0.f) particles.erase(particles.begin() + i); else ++i;
     }
 }
 
-void handleSpecialKeyDown(int key, int x, int y) {
-    if (key == GLUT_KEY_UP) {
-        if (gameState == STATE_START) {
-            gameState = STATE_PLAYING;
-        } else if (gameState == STATE_GAME_OVER) {
-            resetGame();
-        } else if (gameState == STATE_PLAYING && isGrounded) {
-            runnerVelocityY = JUMP_FORCE;
-            isGrounded = false;
-            soundJump();
-            spawnDust(runnerX + 10.0f, GROUND_Y, 6, -2.0f, 1.2f);
-        }
-    } else if (key == GLUT_KEY_DOWN) {
-        if (gameState == STATE_PLAYING) {
-            isDucking = true;
-            soundDuck();
-        }
+void timerCB(int) {
+    int now = glutGet(GLUT_ELAPSED_TIME);
+    float dt = (now - lastTime) / (1000.f / 60.f);
+    lastTime = now;
+    if (dt < 0.f) dt = 0.f;
+    if (dt > 3.f) dt = 3.f;   // avoid huge jumps after window drag / stall
+    updateGame(dt);
+    glutPostRedisplay();
+    glutTimerFunc(FRAME_MS, timerCB, 0);
+}
+
+// ============================================================================
+// Input
+// ============================================================================
+void doJump() {
+    if (gState == STATE_START)     { resetGame(); return; }
+    if (gState == STATE_GAME_OVER) { resetGame(); return; }
+    if (gState == STATE_PLAYING && grounded) { rVY = JUMP_FORCE; grounded = false; playSnd(sndJump); }
+}
+
+void startDuck() {
+    if (gState != STATE_PLAYING) return;
+    if (!ducking && grounded) playSnd(sndDuck);
+    ducking = true;
+}
+
+void releaseJump() {
+    if (!grounded && rVY > 4.f) rVY *= 0.55f;   // variable jump height
+}
+
+void keyDown(unsigned char k, int, int) {
+    if (k == 27) exit(0);
+    if (k == ' ') { doJump(); return; }
+    if (k == 't' || k == 'T') {
+        currentTheme = (currentTheme + 1) % THEME_COUNT;
+        return;
+    }
+    if (k == 'p' || k == 'P') {
+        if (gState == STATE_PLAYING) gState = STATE_PAUSED;
+        else if (gState == STATE_PAUSED) gState = STATE_PLAYING;
+        return;
+    }
+    if (k == 'r' || k == 'R') { resetGame(); return; }
+    if (k == 'h' || k == 'H') { showHB = !showHB; return; }
+    if (k == 'm' || k == 'M') { soundOn = !soundOn; if (!soundOn) PlaySoundA(NULL, NULL, 0); return; }
+}
+void keyUp(unsigned char k, int, int) {
+    if (k == ' ') releaseJump();
+}
+void specialDown(int k, int, int) {
+    if (k == GLUT_KEY_UP) doJump();
+    else if (k == GLUT_KEY_DOWN) startDuck();
+}
+void specialUp(int k, int, int) {
+    if (k == GLUT_KEY_DOWN) ducking = false;
+    if (k == GLUT_KEY_UP) releaseJump();
+}
+// Mouse / touchscreen laptop: left click = jump, right click (hold) = duck
+void mouseCB(int button, int st, int, int) {
+    if (button == GLUT_LEFT_BUTTON) {
+        if (st == GLUT_DOWN) doJump(); else releaseJump();
+    } else if (button == GLUT_RIGHT_BUTTON) {
+        if (st == GLUT_DOWN) startDuck(); else ducking = false;
     }
 }
 
-void handleSpecialKeyUp(int key, int x, int y) {
-    if (key == GLUT_KEY_DOWN) {
-        isDucking = false;
-    }
-    if (key == GLUT_KEY_UP) {
-        if (!isGrounded && runnerVelocityY > 4.0f) {
-            runnerVelocityY *= 0.55f;
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Window Reshape Callback
-// -----------------------------------------------------------------------------
 void reshape(int w, int h) {
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluOrtho2D(0.0, WINDOW_WIDTH, 0.0, WINDOW_HEIGHT);
+    gluOrtho2D(0.0, WIN_W, 0.0, WIN_H);   // 2D orthographic projection
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 }
 
-// -----------------------------------------------------------------------------
-// Main Entry Point
-// -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
-    glutInitWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT);
-    glutInitWindowPosition(100, 80);
-    glutCreateWindow("Chrono Run: DN Dash - CSE-402 CG&IP Lab Project");
+    glutInitWindowSize(WIN_W, WIN_H);
+    glutInitWindowPosition(100, 100);
+    glutCreateWindow("Chrono Run: DN Dash  |  Made by - Ubayda & Rony");
 
-    // Enable Alpha Blending for smooth transparencies and particle effects
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glutIgnoreKeyRepeat(1);
 
     initWorld();
+    initSounds();
+    lastTime = glutGet(GLUT_ELAPSED_TIME);
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
-    glutKeyboardFunc(handleKeyDown);
-    glutKeyboardUpFunc(handleKeyUp);
-    glutSpecialFunc(handleSpecialKeyDown);
-    glutSpecialUpFunc(handleSpecialKeyUp);
-    glutTimerFunc(FRAME_DELAY_MS, timerCallback, 0);
+    glutMouseFunc(mouseCB);
+    glutKeyboardFunc(keyDown);
+    glutKeyboardUpFunc(keyUp);
+    glutSpecialFunc(specialDown);
+    glutSpecialUpFunc(specialUp);
+    glutTimerFunc(FRAME_MS, timerCB, 0);
 
-    std::cout << "==========================================================" << std::endl;
-    std::cout << "  CHRONO RUN: DN DASH - CSE-402 CG&IP LAB PROJECT" << std::endl;
-    std::cout << "  Metropolitan University, Sylhet" << std::endl;
-    std::cout << "  Submitted by:" << std::endl;
-    std::cout << "    - Nahdiul Islam Rony (231-115-069)" << std::endl;
-    std::cout << "    - Abu Ubayda         (231-115-080)" << std::endl;
-    std::cout << "  Section: B, 58th Batch" << std::endl;
-    std::cout << "  Lecturer: Shrabanti Chowdhury" << std::endl;
-    std::cout << "==========================================================" << std::endl;
-    std::cout << "Controls:" << std::endl;
-    std::cout << "  [SPACE] / [UP]  : Jump" << std::endl;
-    std::cout << "  [DOWN]          : Duck / Slide" << std::endl;
-    std::cout << "  [P]             : Pause / Resume" << std::endl;
-    std::cout << "  [R]             : Restart" << std::endl;
-    std::cout << "  [H]             : Toggle Hitbox Outlines (Debug)" << std::endl;
-    std::cout << "  [M]             : Toggle Audio Sound Effects" << std::endl;
-    std::cout << "  [ESC]           : Exit" << std::endl;
-    std::cout << "==========================================================" << std::endl;
+    std::cout << "CHRONO RUN: DN DASH v3.0 - CSE-402 CG & IP Lab\n"
+              << "Nahdiul Islam Rony (231-115-069) & Abu Ubayda (231-115-080)\n"
+              << "Controls: SPACE/UP jump | DOWN duck | P pause | R restart | H hitbox | M sound | ESC quit\n"
+              << "Mouse:    left click jump | right click (hold) duck\n";
 
     glutMainLoop();
     return 0;

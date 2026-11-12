@@ -30,7 +30,8 @@ The standout feature is a seamless, real-time day-night cycle spanning four dist
 | Key / Control | In-Game Action | Mechanics & Description |
 | :--- | :--- | :--- |
 | `[SPACEBAR]` or `[UP ARROW]` | **Jump** | Variable-height jump. Tap for short hop; hold for full jump apex. |
-| `[DOWN ARROW]` | **Duck / Slide** | Low slide crouch. Compresses hitbox from 70px to 38px to slide under high birds. |
+| `[DOWN ARROW]` | **Duck / Slide** | Low slide crouch. Compresses hitbox to slide under high drones. |
+| `[T]` | **Dynamic Theme** | **New Feature**: Switches between 5 funny dinosaur themes (Cyan Raptor, Jurassic Green, Crimson Blaze, Neon Cyber, Obsidian Gold). |
 | `[P]` | **Pause / Resume** | Freezes simulation timer and displays pause dialog. |
 | `[R]` | **Restart** | Instantly resets score, speed, obstacles, and player position. |
 | `[H]` | **Hitbox Visualizer** | **Lab Feature**: Toggles green (runner) and red (obstacles) collision boundary boxes. |
