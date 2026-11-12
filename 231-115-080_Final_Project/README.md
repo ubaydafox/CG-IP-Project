@@ -31,6 +31,7 @@ The standout feature is a seamless, real-time 2.5-minute day-night cycle spannin
 | :--- | :--- | :--- |
 | `[SPACEBAR]` or `[UP ARROW]` | **Jump** | Variable-height jump. Tap for short hop; hold for full jump apex. |
 | `[DOWN ARROW]` | **Duck / Slide** | Low slide crouch. Compresses hitbox to slide under high drones. (Also fast-fall in mid-air). |
+| `[T]` | **Dino Theme** | Cycles through 5 runner themes (Cyan Raptor, Jurassic Green, Crimson Blaze, Neon Cyber, Obsidian Gold). |
 | `[P]` | **Pause / Resume** | Freezes simulation timer and displays pause dialog. |
 | `[R]` | **Restart** | Instantly resets score, speed, obstacles, and player position. |
 | `[H]` | **Hitbox Visualizer** | **Lab Feature**: Toggles green (runner) and red (obstacles) collision boundary boxes. |

@@ -53,6 +53,7 @@ const int   WIN_H    = 450;
 const float GROUND_Y = 110.0f;
 const int   FRAME_MS = 16;          // ~60 FPS timer
 const float PX       = 4.0f;        // size of one sprite "pixel"
+const float DINO_PX  = 2.0f;        // pixel size for dinosaur (37x2 = 74px tall)
 
 // Speed (pixels per 60fps-frame). Calm start, gentle ramp.
 const float BASE_SPEED = 4.0f;
@@ -97,90 +98,234 @@ bool aabbCollide(const RectAABB& a, const RectAABB& b) {
 // ============================================================================
 // Pixel-art sprites ('#' = filled pixel). Row 0 is the TOP of the sprite.
 // ============================================================================
-const char* RUN_A[18] = {
-    ".......####...",
-    "......######..",
-    "......####.#..",
-    "......######..",
-    ".......####...",
-    "........##....",
-    "......#####...",
-    ".....#######..",
-    "....##.###.##.",
-    "...##..###..##",
-    "..##...###....",
-    ".......###....",
-    "......#####...",
-    ".....##...##..",
-    "....##.....##.",
-    "...##.......##",
-    "..##........##",
-    ".###........##",
+const char* DINO_RUN_A[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    ".......BBBBB................................BBBBBBKBBBBB...",
+    "...BBBBBBBBBBB.............................BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
+    "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB.................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB.......BBBBB.................",
+    ".........................YYBB.........BBBBB................",
+    "........................YYBB...........BBBBB...............",
+    "........................YYB.............BBBB...............",
+    ".........................YB..............BBB...............",
+    ".........................BB...............BBB..............",
+    ".........................BB...............BBBBB............",
+    ".........................BBBB..............BBBB............",
+    ".........................BBBBB.............................",
 };
-const char* RUN_B[18] = {
-    ".......####...",
-    "......######..",
-    "......####.#..",
-    "......######..",
-    ".......####...",
-    "........##....",
-    "......#####...",
-    ".....#######..",
-    ".....#.###.#..",
-    ".....#.###.#..",
-    ".....#.###.#..",
-    ".......###....",
-    ".......####...",
-    ".......##.##..",
-    ".......##..##.",
-    ".......##.#...",
-    ".......##.....",
-    ".......###....",
+
+const char* DINO_RUN_B[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    "....BBBBBB..................................BBBBBBKBBBBB...",
+    "..BBBBBBBBBB...............................BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
+    "....BBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB..................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB......BBBBBB.................",
+    ".........................YYBB........BBBBBB................",
+    "........................YYBB..........BBBBB................",
+    ".......................YYBBB...........BBBB................",
+    "......................YYBB..............BBB................",
+    ".....................YYBB................BBB...............",
+    "....................YYBB.................BBBB..............",
+    "..........................................BBBBB............",
+    "..........................................BBBBBB...........",
 };
-const char* JUMP_S[18] = {
-    ".......####...",
-    "......######..",
-    "......####.#..",
-    "......######..",
-    ".......####...",
-    "........##....",
-    "......#####...",
-    ".....#######..",
-    "....##.###.##.",
-    "...##..###..##",
-    ".......###....",
-    ".......###....",
-    "......#####...",
-    ".....##..###..",
-    "....##.....##.",
-    "...##.....##..",
-    "..............",
-    "..............",
+
+const char* DINO_JUMP[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    ".......BBBBB................................BBBBBBKBBBBB...",
+    "...BBBBBBBBBBB.............................BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBBBBBBBBBB.",
+    "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKKKKKK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYYYYYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB..................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB......BBBBB..................",
+    ".........................YYBB........BBBBB.................",
+    ".......................YYYYBB.........BBBB.................",
+    ".....................YYYYYBB...........BBB.................",
+    "...................YYYYYBB.............BBB.................",
+    "...........................................................",
+    "...........................................................",
+    "...........................................................",
+    "...........................................................",
 };
-const char* DUCK_A[10] = {
-    "............####..",
-    "...........######.",
-    "...........####.#.",
-    "..##########.####.",
-    ".############.....",
-    "##..########......",
-    "......##..##......",
-    ".....##....##.....",
-    "....##......##....",
-    "...###......###...",
+
+const char* DINO_CRASH[37] = {
+    "................................................BB.........",
+    "...............................................BBBBB.......",
+    ".............................................BBBBBBBBBB....",
+    ".......BBBBB................................BBBBBK.KBBBB...",
+    "...BBBBBBBBBBB.............................BBBBBB.K.BBBBBB.",
+    "BBBBBBBBBBBBBBBBBBBBB....................BBBBBBBBK.KBBBBBB.",
+    "...BBBBBBBBBBBBBBBBBBB..................BBBBBBBBBBBBKK..KK.",
+    "......BBBBBBBBBBBBBBBBBBBBBBBBBB...BBBBBBBBBBBBBBYYYKKKKYY..",
+    "........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY...",
+    "...........YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYYYY....",
+    "..............YYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    ".................YYYYBBBBBBBBBBBBBBBBBBBBBBBBBYY..........",
+    "..................YYYYBBBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "....................YYYYBBBBBBBBBBBBBBBBBBBBBBY...........",
+    "......................YYYBBBBBBBBBBBBBBBBBBBBB.............",
+    ".......................YYYYBBBBBBBBBBBBBBYBBBBBB..........",
+    "........................YYYBBBBBBBBBBBBBYYYBBBBBBB........",
+    ".........................YYYBBBBBBBBBBBYYYYBBBBBBBBBB.....",
+    "..........................YYYYBBBBBBBBYYYYYYBBB....BB.....",
+    "...........................YYYYBBBBBBBYYYBBYBBBB..BB......",
+    "............................YYYYYBBBBBYBBBB.BBBB..........",
+    "............................YYYYYYYBBBBBBBB....BBB........",
+    "...............................YYYBBBBBBBB......BBBB......",
+    "..............................YYYBBBBBBBBB........BB......",
+    "............................YYYYBBBBBBBBB........BB.......",
+    "............................YYYBBBBBBBBB..................",
+    "............................YYBB..BBBBBBB.................",
+    "...........................YYBB....BBBBBBB.................",
+    "..........................YYBB.......BBBBB.................",
+    ".........................YYBB.........BBBBB................",
+    "........................YYBB...........BBBBB...............",
+    "........................YYB.............BBBB...............",
+    ".........................YB..............BBB...............",
+    ".........................BB...............BBB..............",
+    ".........................BB...............BBBBB............",
+    ".........................BBBB..............BBBB............",
+    ".........................BBBBB.............................",
 };
-const char* DUCK_B[10] = {
-    "............####..",
-    "...........######.",
-    "...........####.#.",
-    "..##########.####.",
-    ".############.....",
-    "##..########......",
-    "......##.##.......",
-    "......##.##.......",
-    "......##..##......",
-    ".....###..###.....",
+
+const char* DINO_DUCK_A[19] = {
+    "............................................................",
+    "............................................................",
+    "............................................................",
+    "...................................................BBBBB....",
+    ".................................................BBBBBBBB...",
+    "................................................BBBBBKBBBB..",
+    "BBBBBBBBBBBBBBBBBB.............................BBBBBBBBBBBB.",
+    ".BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBKKKKK..",
+    "..YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYY...",
+    "...YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYBBBBBYYYYY....",
+    ".....YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYBBBB.........",
+    ".......YYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYBBB..BB.......",
+    "..........YYYYYYYYYYBBBBBBBBBBBBBBBBBBYYYYYYYBBB....BB......",
+    ".............YYYYYYYYYYBBBBBBBBBBBBBYYYBBYBBBB..............",
+    "................YYYYYYYYYYBBBBBBBBBYBBBB..BBBB..............",
+    "...................YYBB...BBBBBBBB........BBBB..............",
+    "..................YYBB.....BBBBBBB........BBBB..............",
+    "..................YYBB......BBBB............BB..............",
+    ".................YYBBB......................BBB.............",
 };
+
+const char* DINO_DUCK_B[19] = {
+    "............................................................",
+    "............................................................",
+    "............................................................",
+    "...................................................BBBBB....",
+    ".................................................BBBBBBBB...",
+    "................................................BBBBBKBBBB..",
+    "BBBBBBBBBBBBBBBBBB.............................BBBBBBBBBBBB.",
+    ".BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBKKKKK..",
+    "..YYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYYY...",
+    "...YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYBBBBBYYYYY....",
+    ".....YYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBYYYBBBB.........",
+    ".......YYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBYYYYYBBB..BB.......",
+    "..........YYYYYYYYYYBBBBBBBBBBBBBBBBBBYYYYYYYBBB....BB......",
+    ".............YYYYYYYYYYBBBBBBBBBBBBBYYYBBYBBBB..............",
+    "................YYYYYYYYYYBBBBBBBBBYBBBB..BBBB..............",
+    "....................YYBB....BBBBBBB........BBBB.............",
+    "...................YYBB......BBBBBB.........BBBB............",
+    "....................YYBB......BBBB............BB............",
+    ".....................YYBBB....................BBB...........",
+};
+
+
+
+// ============================================================================
+// Dynamic Themes (Changeable anytime with [T])
+// ============================================================================
+struct ThemeColors {
+    const char* name;
+    ColorRGB body;
+    ColorRGB belly;
+    ColorRGB eye;
+};
+
+const ThemeColors THEMES[] = {
+    { "CYAN RAPTOR",    { 0.00f, 0.62f, 0.88f }, { 1.00f, 0.80f, 0.00f }, { 0.10f, 0.12f, 0.16f } },
+    { "JURASSIC GREEN", { 0.06f, 0.72f, 0.50f }, { 0.99f, 0.88f, 0.28f }, { 0.10f, 0.12f, 0.16f } },
+    { "CRIMSON BLAZE",  { 0.94f, 0.27f, 0.27f }, { 0.98f, 0.45f, 0.09f }, { 0.10f, 0.12f, 0.16f } },
+    { "NEON CYBER",     { 0.66f, 0.33f, 0.97f }, { 0.93f, 0.28f, 0.60f }, { 0.10f, 0.12f, 0.16f } },
+    { "OBSIDIAN GOLD",  { 0.24f, 0.28f, 0.35f }, { 0.96f, 0.62f, 0.04f }, { 0.90f, 0.20f, 0.20f } }
+};
+const int THEME_COUNT = 5;
+int currentTheme = 0;
+
+// Dynamic lighting colors for the current runner theme
+ColorRGB curBodyCol, curBellyCol, curEyeCol;
 
 
 // ============================================================================
@@ -335,6 +480,30 @@ void drawSprite(const char* const* rows, int n, float x, float y) {
     glEnd();
 }
 
+// Dinosaur multi-colored sprite renderer with dynamic theme lighting
+void drawDinoSprite(const char* const* rows, int n, float x, float y, float pxSize,
+                    const ColorRGB& colBody, const ColorRGB& colBelly, const ColorRGB& colEye) {
+    glBegin(GL_QUADS);
+    for (int r = 0; r < n; ++r) {
+        const char* row = rows[r];
+        int len = (int)strlen(row);
+        float yy = y + (n - 1 - r) * pxSize;
+        for (int c = 0; c < len; ++c) {
+            char ch = row[c];
+            if (ch == '.') continue;
+            if (ch == 'B') glColor3f(colBody.r, colBody.g, colBody.b);
+            else if (ch == 'Y') glColor3f(colBelly.r, colBelly.g, colBelly.b);
+            else if (ch == 'K') glColor3f(colEye.r, colEye.g, colEye.b);
+            else if (ch == 'W') glColor3f(1.f, 1.f, 1.f);
+            else glColor3f(colBody.r, colBody.g, colBody.b);
+
+            float xx = x + c * pxSize;
+            glVertex2f(xx, yy); glVertex2f(xx + pxSize, yy);
+            glVertex2f(xx + pxSize, yy + pxSize); glVertex2f(xx, yy + pxSize);
+        }
+    }
+    glEnd();
+}
 
 // ============================================================================
 // World generation
@@ -426,6 +595,20 @@ void updatePalette() {
     // Ink flips at mid-fade so the runner always contrasts with the sky
     inkCol = (nightF < 0.5f) ? ColorRGB(0.33f, 0.33f, 0.33f) : ColorRGB(0.86f, 0.86f, 0.88f);
 
+    // Dynamic theme ambient lighting for the dinosaur runner
+    const ThemeColors& th = THEMES[currentTheme];
+    if (nightF > 0.01f) {
+        // At night/dusk, tint smoothly into luminous neon/glow shades and light up the eyes
+        ColorRGB nightBody = lerp(th.body, ColorRGB(0.2f, 0.8f, 1.0f), 0.25f);
+        curBodyCol  = lerp(th.body, nightBody, nightF);
+        curBellyCol = lerp(th.belly, ColorRGB(1.0f, 0.95f, 0.5f), nightF * 0.4f);
+        curEyeCol   = lerp(th.eye, ColorRGB(0.95f, 0.95f, 0.95f), nightF);
+    } else {
+        curBodyCol  = th.body;
+        curBellyCol = th.belly;
+        curEyeCol   = th.eye;
+    }
+
     if      (t < 20.f)       gPhase = PHASE_DAWN;
     else if (t < 70.f)       gPhase = PHASE_DAY;
     else if (t < DAY_END + FADE * 0.5f) gPhase = PHASE_DUSK;
@@ -512,12 +695,18 @@ void renderGround() {
 }
 
 void renderRunner() {
-    setColor(inkCol);
     int frame = ((int)runAnim) % 2;
     if (gState == STATE_START) frame = 0;
-    if (ducking && grounded)  drawSprite(frame ? DUCK_B : DUCK_A, 10, rX, rY);
-    else if (!grounded)       drawSprite(JUMP_S, 18, rX, rY);
-    else                      drawSprite(frame ? RUN_B : RUN_A, 18, rX, rY);
+
+    if (gState == STATE_GAME_OVER) {
+        drawDinoSprite(DINO_CRASH, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else if (ducking && grounded) {
+        drawDinoSprite(frame ? DINO_DUCK_B : DINO_DUCK_A, 19, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else if (!grounded) {
+        drawDinoSprite(DINO_JUMP, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else {
+        drawDinoSprite(frame ? DINO_RUN_B : DINO_RUN_A, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    }
 }
 
 // Traffic cone silhouette with two background-coloured reflective bands
@@ -599,8 +788,8 @@ void renderParticles() {
 }
 
 RectAABB runnerBox() {
-    if (ducking && grounded) return { rX + 4.f,  rY, 64.f, 38.f };
-    return                          { rX + 12.f, rY, 36.f, 68.f };
+    if (ducking && grounded) return { rX + 16.f, rY, 78.f, 36.f };
+    return                          { rX + 38.f, rY, 48.f, 68.f };
 }
 RectAABB obstBox(const Obstacle& o) { return { o.x + 4.f, o.y, o.w - 8.f, o.h - 2.f }; }
 
@@ -653,7 +842,7 @@ void renderHUD() {
     // Bottom help line
     setColor(tone(0.50f));
     if (gState != STATE_START)
-        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   P pause   R restart   H hitbox   M sound: ")
+        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   P pause   R restart   H hitbox   M sound: "
                  + (soundOn ? "on" : "off") + "   ESC quit",
                  GLUT_BITMAP_8_BY_13);
 
@@ -664,6 +853,8 @@ void renderHUD() {
         drawStrC(WIN_W * 0.5f, 265.f, "Press SPACE to start", mono);
         setColor(tone(0.60f));
         drawStrC(WIN_W * 0.5f, 240.f, "Jump over cones, barriers & bollards  -  Duck under high drones", GLUT_BITMAP_8_BY_13);
+        setColor(curBodyCol);
+        drawStrC(WIN_W * 0.5f, 218.f, std::string("Dino Theme: [T] ") + THEMES[currentTheme].name, mono);
         setColor(inkCol);
         drawStrC(WIN_W * 0.5f, 200.f, "Made by - Ubayda & Rony", mono);
         setColor(tone(0.50f));
@@ -837,6 +1028,10 @@ void releaseJump() {
 void keyDown(unsigned char k, int, int) {
     if (k == 27) exit(0);
     if (k == ' ') { doJump(); return; }
+    if (k == 't' || k == 'T') {
+        currentTheme = (currentTheme + 1) % THEME_COUNT;
+        return;
+    }
     if (k == 'p' || k == 'P') {
         if (gState == STATE_PLAYING) gState = STATE_PAUSED;
         else if (gState == STATE_PAUSED) gState = STATE_PLAYING;
