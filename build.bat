@@ -1,41 +1,32 @@
 @echo off
-title Build Chrono Run: DN Dash
-echo ========================================================
-echo   Compiling Chrono Run: DN Dash (C++ / OpenGL / FreeGLUT)
-echo   Course: CSE-402 Computer Graphics ^& Image Processing Lab
-echo ========================================================
+title  Chrono Run: DN Dash  |  Build
+echo.
+echo  ============================================================
+echo   Chrono Run: DN Dash  ^|  CSE-402 Computer Graphics Lab
+echo   Building with MinGW g++  ...
+echo  ============================================================
 echo.
 
 set COMPILER=g++
 where g++ >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    if exist "C:\Program Files\CodeBlocks\MinGW\bin\g++.exe" (
-        set COMPILER="C:\Program Files\CodeBlocks\MinGW\bin\g++.exe"
-    ) else if exist "C:\MinGW\bin\g++.exe" (
+    if exist "C:\MinGW\bin\g++.exe" (
         set COMPILER="C:\MinGW\bin\g++.exe"
     ) else (
-        echo [ERROR] g++ compiler not found in PATH or standard CodeBlocks directories.
-        echo Please ensure MinGW/CodeBlocks is installed.
-        pause
-        exit /b 1
+        echo [ERROR] g++ not found. Please install MinGW and add it to PATH.
+        pause & exit /b 1
     )
 )
 
-echo Using compiler: %COMPILER%
-echo Compiling src/main.cpp...
-
-%COMPILER% -O2 -I"include" -L"C:\MinGW\lib" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -lwinmm -o ChronoRun.exe
+%COMPILER% -O2 -I"include" src/main.cpp -lfreeglut -lopengl32 -lglu32 -lwinmm -o ChronoRun.exe
 
 if %ERRORLEVEL% equ 0 (
     echo.
-    echo [SUCCESS] Compilation succeeded!
-    echo Output executable: ChronoRun.exe
+    echo  [SUCCESS]  ChronoRun.exe is ready.
     echo.
 ) else (
     echo.
-    echo [ERROR] Compilation failed. Please review the errors above.
-    pause
-    exit /b 1
+    echo  [ERROR]  Compilation failed. See errors above.
+    pause & exit /b 1
 )
-
 pause

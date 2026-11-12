@@ -1,17 +1,16 @@
 {
   "configurations": [
     {
-      "name": "windows-gcc-x64",
+      "name": "Win32",
       "includePath": [
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/include/GL"
       ],
-      "compilerPath": "gcc",
-      "cStandard": "${default}",
-      "cppStandard": "${default}",
-      "intelliSenseMode": "windows-gcc-x64",
-      "compilerArgs": [
-        ""
-      ]
+      "defines": ["_WIN32"],
+      "compilerPath": "C:/MinGW/bin/g++.exe",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "windows-gcc-x64"
     }
   ],
   "version": 4

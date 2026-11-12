@@ -1,147 +1,163 @@
-# CHRONO RUN: DN DASH
-**An Interactive 2D Endless Runner with Real-Time Day-Night Simulation**
+# 🦕 Chrono Run: DN Dash
+**An Interactive 2D Endless Runner with Real-Time Day-Night Cycle**
 
-**Course**: Computer Graphics & Image Processing Lab (Course Code: `CSE-402`)  
-**Department**: Department of Computer Science & Engineering, Metropolitan University, Sylhet  
-**Course Lecturer**: Shrabanti Chowdhury  
-
----
-
-### Team Information (Section B, 58th Batch)
-- **Nahdiul Islam Rony** — Student ID: `231-115-069`
-- **Abu Ubayda** — Student ID: `231-115-080`
+> **Course**: Computer Graphics & Image Processing Lab (CSE-402)  
+> **Institution**: Metropolitan University, Sylhet — Dept. of CSE, Section B, 58th Batch  
+> **Lecturer**: Shrabanti Chowdhury
 
 ---
 
-## 1. Project Overview & Motivation
-**Chrono Run: DN Dash** is a high-performance 2D endless runner desktop game developed in **C++** using **OpenGL** and **FreeGLUT**. Inspired by retro endless runners like the Chrome Dino game, the project demonstrates core computer graphics concepts such as 2D orthographic projection, vector primitive modeling, multi-layer parallax depth scrolling, frame-rate-independent physics, linear color interpolation (`lerp`), and Axis-Aligned Bounding Box (AABB) collision detection.
+## 👥 Team
 
-### Unique Feature: Dynamic Day-Night Cycle
-The standout feature is a seamless, real-time 2.5-minute day-night cycle spanning four atmospheric phases:
-1. **Dawn (0–20s)**: Warm morning glow with rising sun.
-2. **Day (20–70s)**: Clean, high-contrast daylight with distant city skyline.
-3. **Dusk (70–90s)**: Golden hour sunset transition.
-4. **Starry Night (94–146s)**: High-contrast midnight sky with glowing crescent moon, lit city windows, and twinkling stars. The character and obstacle silhouettes automatically invert color for crystal-clear visibility.
-
----
-
-## 2. Gameplay Mechanics & Controls
-
-| Key / Control | In-Game Action | Mechanics & Description |
+| Name | Student ID | Responsibility |
 | :--- | :--- | :--- |
-| `[SPACEBAR]` or `[UP ARROW]` | **Jump** | Variable-height jump. Tap for short hop; hold for full jump apex. |
-| `[DOWN ARROW]` | **Duck / Slide** | Low slide crouch. Compresses hitbox to slide under high drones. (Also fast-fall in mid-air). |
-| `[T]` | **Dino Theme** | Cycles through 5 runner themes (Cyan Raptor, Jurassic Green, Crimson Blaze, Neon Cyber, Obsidian Gold). |
-| `[P]` | **Pause / Resume** | Freezes simulation timer and displays pause dialog. |
-| `[R]` | **Restart** | Instantly resets score, speed, obstacles, and player position. |
-| `[H]` | **Hitbox Visualizer** | **Lab Feature**: Toggles green (runner) and red (obstacles) collision boundary boxes. |
-| `[M]` | **Sound On / Off** | Toggles the gentle synthesized sound effects. |
-| Mouse | **Jump / Duck** | Left click = jump, hold right click = duck. |
-| `[ESC]` | **Exit** | Closes the OpenGL window gracefully. |
+| Nahdiul Islam Rony | 231-115-069 | Rendering, day-night cycle, parallax, sprite animation |
+| Abu Ubayda | 231-115-080 | Physics, collision detection, scoring, HUD, game states |
 
 ---
 
-## 3. Project Structure
+## 📁 Project Structure
+
 ```
-d:\CG&IP project\
-├── src\
-│   └── main.cpp           # Complete, well-documented C++ OpenGL game source code
-├── docs\
-│   └── index.html         # HTML5 Canvas / Web mobile version (GitHub Pages)
-├── include\
-│   └── GL\
-│       ├── freeglut.h     # FreeGLUT API header
-│       ├── freeglut_ext.h
-│       ├── freeglut_std.h
-│       └── glut.h
-├── lib\
-│   └── libfreeglut.a      # 64-bit MinGW FreeGLUT library
-├── freeglut.dll           # Runtime dynamic library (placed alongside executable)
-├── ChronoRun.exe          # Precompiled ready-to-run Windows executable
-├── ChronoRun.cbp          # Ready-to-open Code::Blocks Project File
-├── build.bat              # One-click command-line build script using MinGW g++
-├── run.bat                # One-click game launcher script
-├── generate_slides.py     # Python script to generate presentation slides
-├── Chrono_Run_DN_Dash_Presentation.pptx # Final Presentation Slides (PPT)
-├── PROGRESS_UPDATE.md     # Progress report & talking points
-└── README.md              # Project documentation and run instructions
+CG-IP-Project/
+│
+├── src/
+│   └── main.cpp                  ← Complete C++ OpenGL source code
+│
+├── include/GL/                   ← FreeGLUT headers (freeglut.h, glut.h …)
+├── lib/                          ← FreeGLUT static library (libfreeglut.a)
+│
+├── docs/
+│   └── index.html                ← Web / browser version (GitHub Pages)
+│
+├── presentation/
+│   └── Chrono_Run_DN_Dash_Presentation.pptx
+│
+├── .vscode/                      ← VS Code build / debug / IntelliSense config
+│   ├── c_cpp_properties.json
+│   ├── launch.json
+│   ├── settings.json
+│   └── tasks.json
+│
+├── ChronoRun.exe                 ← Pre-compiled Windows executable
+├── ChronoRun.cbp                 ← Code::Blocks project file
+├── freeglut.dll                  ← Runtime DLL (must stay next to .exe)
+│
+├── build.bat                     ← One-click build script (MinGW g++)
+├── run.bat                       ← One-click launcher
+├── DEMO_VIDEO_INSTRUCTIONS.md    ← Guide for recording the demo video
+└── README.md                     ← This file
 ```
 
 ---
 
-## 4. How to Build and Run
+## 🚀 How to Run
 
-### Method A: One-Click Batch Script (Recommended & Fastest)
-1. **To Run immediately**: Double-click `run.bat` (or double-click `ChronoRun.exe`).
-2. **To Recompile**: Double-click `build.bat`. It automatically detects MinGW / Code::Blocks `g++` and compiles `src/main.cpp` into `ChronoRun.exe`.
-
-### Method B: Using Code::Blocks IDE
-1. Open **Code::Blocks**.
-2. Go to **File -> Open...** and select `ChronoRun.cbp`.
-3. Press **F9** (or click **Build -> Build and run**).
-4. The game will compile and launch immediately (compiler include and linker paths are pre-configured).
-
-### Method C: Command-Line Compilation (MinGW GCC)
-Open PowerShell or Command Prompt in the project folder and run:
-```bash
-g++ -O2 -static -I"include" -L"lib" src/main.cpp -lfreeglut -lopengl32 -lglu32 -lwinmm -o ChronoRun.exe
-./ChronoRun.exe
+### Option 1 — Double-click (Easiest)
 ```
-*(If `g++` is not in your system PATH, use `"C:\Program Files\CodeBlocks\MinGW\bin\g++.exe"`)*.
+run.bat
+```
+Launches `ChronoRun.exe` directly. The `freeglut.dll` must be in the same folder (it already is).
 
-### Method D: Mobile / Browser Version (Android, iPhone, any browser)
-A Canvas/JavaScript port of the same game is in [`docs/index.html`](docs/index.html).
-- **On a PC**: just double-click `docs/index.html` to play in your browser.
-- **On a phone**: enable GitHub Pages (repo **Settings → Pages → Branch: `main`, folder: `/docs`**), then open
-  `https://ubaydafox.github.io/CG-IP-Project/` on your phone. Use **Share → Add to Home Screen** to install it like an app.
-- **Touch controls**: tap anywhere or the **JUMP** button to jump (hold for a higher jump), hold **DUCK** to duck,
-  plus on-screen **pause** and **sound** buttons at the top. Rotate to landscape for the best view.
+### Option 2 — Build from Source
+```bat
+build.bat
+```
+Requires **MinGW g++** on your PATH (or installed at `C:\MinGW\bin\g++.exe`).  
+Produces a fresh `ChronoRun.exe`.
 
-### Sound
-Gentle, soft sine-tone effects (jump, duck, every 100 points, game over). Press `[M]` (or the sound button on mobile) to mute.
+### Option 3 — Code::Blocks IDE
+Open `ChronoRun.cbp` and press **F9** to build & run.
 
----
-
-## 5. Computer Graphics Concepts Implemented (For Lab Evaluation)
-
-1. **2D Orthographic Projection**:  
-   Set up via `gluOrtho2D(0.0, 1000.0, 0.0, 450.0)` in the reshape callback to create a 1:1 pixel coordinate system.
-2. **Pixel-Art Sprite Rendering & Vector Modeling**:  
-   - Raster pixel-art sprite rendering using `GL_QUADS` for the runner character (run cycle, jump, duck).
-   - Flat vector silhouette modeling for city obstacles (traffic cones with reflective bands, road barriers, bollards, delivery drones).
-   - Thin ground line, pavement dashes, road bumps, and stylized celestial bodies (Sun, Moon, twinkling stars).
-3. **Linear Color Interpolation (`lerp`) & Day-Night Cycle**:  
-   Computes $C(t) = C_1 + (C_2 - C_1) \times t$ across atmospheric phases (Dawn, Day, Dusk, Night) with high-contrast color inversion for maximum visibility.
-4. **Multi-Layer Parallax Scrolling**:  
-   Simulates 2D depth by scrolling skyline and environment layers at varied rates:
-   - Far City Skyline: $0.10 \times \text{Speed}$
-   - Near City Skyline: $0.25 \times \text{Speed}$
-   - Drifting Clouds: Gentle horizontal drift
-   - Ground & Obstacles: $1.00 \times \text{Speed}$
-5. **Double Buffering & Delta-Time Physics**:  
-   Configured using `GLUT_DOUBLE | GLUT_RGB` with frame-rate-independent delta-time updates for smooth, consistent gameplay across all monitor refresh rates.
-6. **Alpha Blending & Particle Physics**:  
-   Enabled via `glEnable(GL_BLEND)` with `glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)` for dust puffs on footfalls/landing and crash particles.
-7. **Axis-Aligned Bounding Box (AABB) Collision Detection**:  
-   Real-time mathematical intersection checks with calibrated hitboxes. Pressing `[H]` reveals debug collision frames live.
+### Option 4 — Play in Browser (Web Version)
+Open `docs/index.html` directly in any browser, or start a local server:
+```bat
+python -m http.server 8000 --directory docs
+```
+Then visit: **http://localhost:8000**
 
 ---
 
-## 6. Team Work Division
+## 🎮 Controls
 
-| Task / Responsibility | Primary Member | Contribution Details |
-| :--- | :--- | :--- |
-| **Graphics Rendering & Shading** | **Nahdiul Islam Rony** (231-115-069) | OpenGL context setup, orthographic projection, vector primitive drawing, dynamic day-night color interpolation, and parallax background scrolling. |
-| **Physics, Collision & Gameplay** | **Abu Ubayda** (231-115-080) | AABB collision algorithm, jump velocity & gravity physics, duck mechanics, procedural obstacle generation, speed progression, and HUD text rendering. |
-| **Integration & Presentation** | **Both Members** | Playtesting, difficulty balancing, Code::Blocks integration, README documentation, demo video, and PowerPoint presentation slides. |
+| Key | Action |
+| :--- | :--- |
+| `SPACE` or `↑` | Jump (hold for higher jump) |
+| `↓` | Duck / slide under drones |
+| `T` | Cycle dinosaur theme (5 skins) |
+| `P` | Pause / Resume |
+| `R` | Restart |
+| `H` | Toggle AABB hitbox debugger |
+| `M` | Mute / unmute sound |
+| `ESC` | Quit |
+| Left Click | Jump |
+| Right Click (hold) | Duck |
 
 ---
 
-## 7. Submission Checklist (Teacher Instructions)
-- [x] **Project Proposal**: Submitted on Oct 26, 2026 (`StudentID_Proposal.pdf`).
-- [x] **Progress Update (8 Nov 2026)**: In-person demonstration prepared with `PROGRESS_UPDATE.md`.
-- [x] **Source Code**: Complete, runnable, fully commented in `src/main.cpp`.
-- [x] **README File**: Clear build and execution instructions (this file).
-- [x] **Presentation Slides**: `Chrono_Run_DN_Dash_Presentation.pptx` (10 widescreen slides).
-- [ ] **Demo Video**: Record a 2–3 minute video showing gameplay, jump/duck controls, dynamic day-night cycle, and hitbox toggle (`[H]`).
-- [ ] **Google Classroom Upload**: Submit archive named `231-115-080_Final_Project.zip` before Nov 25, 2026 (11:59 PM).
+## 🦕 Dinosaur Themes (press `T` to switch)
+
+| # | Theme Name | Body Color | Belly Color |
+| :-: | :--- | :--- | :--- |
+| 1 | Cyan Raptor *(default)* | Electric Blue | Golden Yellow |
+| 2 | Jurassic Green | Emerald Green | Lime Yellow |
+| 3 | Crimson Blaze | Fiery Red | Orange |
+| 4 | Neon Cyber | Cyber Violet | Hot Magenta |
+| 5 | Obsidian Gold | Charcoal | Amber Gold |
+
+> Colors adapt automatically with the **day-night cycle**: the dino glows at night! 🌙
+
+---
+
+## 🎨 Graphics Concepts Demonstrated
+
+| Concept | Implementation |
+| :--- | :--- |
+| 2D Orthographic Projection | `gluOrtho2D` |
+| Raster Pixel-Art Sprites | `GL_QUADS` bitmap-to-quad renderer |
+| Frame-Based Animation | Run cycle, jump, duck, crash poses |
+| Linear Color Interpolation (`lerp`) | Day-night sky + dino ambient shading |
+| Multi-Layer Parallax Scrolling | Far city skyline, near buildings, clouds, ground |
+| AABB Collision Detection | Runner vs all obstacle types with live debugger |
+| Delta-Time Physics | Frame-rate independent jump/gravity |
+| Procedural Generation | Obstacles, buildings, clouds, stars |
+| Synthesized Audio | In-memory WAV via `PlaySound` (jump, duck, score, game-over) |
+
+---
+
+## 🏙️ Obstacles
+
+| Obstacle | Strategy |
+| :--- | :--- |
+| Traffic Cone (single / double) | Jump over |
+| Road Barrier | Jump over |
+| Bollard Cluster | Jump over |
+| Delivery Drone (high) | Duck under |
+| Delivery Drone (low) | Jump over |
+
+---
+
+## 📅 Development Timeline
+
+| Dates | Milestone |
+| :--- | :--- |
+| Oct 26 – Nov 8 | Environment setup, rendering engine, jump physics, day-night cycle |
+| Nov 9 – Nov 16 | Obstacle system, AABB collision, scoring, game states |
+| Nov 17 – Nov 21 | Dinosaur runner + 5 dynamic themes, difficulty scaling, visual polish |
+| Nov 22 – Nov 25 | Demo video, final submission archive, presentation rehearsal |
+
+---
+
+## 📦 Final Submission Checklist
+
+- [x] Complete, commented `src/main.cpp`
+- [x] Pre-compiled `ChronoRun.exe` (runs without installing anything)
+- [x] Web browser version (`docs/index.html`)
+- [x] PowerPoint presentation (`presentation/`)
+- [x] `build.bat` one-click build script
+- [ ] Demo video recording (2–3 min) — see `DEMO_VIDEO_INSTRUCTIONS.md`
+- [ ] Final ZIP archive for Google Classroom submission
+
+---
+
+*Submitted for CSE-402 Computer Graphics & Image Processing Lab — Metropolitan University, Sylhet*

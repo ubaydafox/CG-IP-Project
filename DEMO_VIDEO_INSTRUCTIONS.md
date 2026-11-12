@@ -1,51 +1,51 @@
-# Demo Video Recording Guide (2–3 Minutes)
-**Final Submission Requirement 4(a): Demo Video**  
+# Demo Video Recording Guide
+**Submission Requirement — Demo Video (2–3 Minutes)**  
 **Course: CSE-402 Computer Graphics & Image Processing Lab**
 
 ---
 
-## 1. Quick Recording with Free Windows Tools
-You don't need any special software to record your demo video on Windows 10/11:
+## How to Record on Windows (No extra software needed)
 
-### Option A: Windows Snipping Tool (Built-in Screen Recorder)
+### Method A: Windows Game Bar (Recommended)
+1. Launch `run.bat` to start the game.
+2. Press **`Win + G`** to open Xbox Game Bar.
+3. Click the **Record (⏺)** button, or press `Win + Alt + R`.
+4. Play through the features (follow the script below).
+5. Press `Win + Alt + R` to stop. File saves to `Videos\Captures`.
+
+### Method B: Windows Snipping Tool
 1. Press `Win + Shift + R`.
-2. Select the Chrono Run game window area.
-3. Click **Record Audio / Mic** if you want to speak.
-4. Click **Start** to record.
-5. When done, click **Stop** and save as MP4.
-
-### Option B: Windows Game Bar (Built-in)
-1. Launch `ChronoRun.exe`.
-2. Press `Win + G` to open the Xbox Game Bar.
-3. Click the **Record** circle (or press `Win + Alt + R`).
-4. Play the game and explain features for 2 minutes.
-5. Press `Win + Alt + R` to stop. The video is saved to `C:\Users\<Name>\Videos\Captures`.
+2. Select the game window area.
+3. Press **Start Recording**.
 
 ---
 
-## 2. Recommended Video Script (2 Minutes)
+## Recommended Video Script (~2 Minutes)
 
-- **0:00 - 0:25 | Introduction**:
-  - Show the Start screen.
-  - *"Hello everyone and Ma'am. We are Nahdiul Islam Rony and Abu Ubayda. This is our CSE-402 project: Chrono Run: DN Dash."*
-  - Mention tools: C++, OpenGL, and FreeGLUT.
+**0:00 – 0:20 | Introduction**
+> *"Hello Ma'am. We are Nahdiul Islam Rony and Abu Ubayda from Section B, 58th Batch.
+> This is our CSE-402 project: Chrono Run: DN Dash — a 2D endless runner built with C++, OpenGL, and FreeGLUT."*
 
-- **0:25 - 1:00 | Controls & Gameplay**:
-  - Press `[SPACE]` to start running.
-  - Demonstrate standard jumping over traffic cones, road barriers, and bollards.
-  - Demonstrate ducking with `[DOWN ARROW]` when high-flying delivery drones appear.
-  - Mention variable jump height (short hop vs high jump) and dust particle effects.
+**0:20 – 0:55 | Gameplay & Controls**
+- Press `SPACE` to start running.
+- Jump over cones, barriers, and bollards.
+- Duck under drones with `DOWN ARROW`.
+- Show the variable jump height (short tap vs long hold).
 
-- **1:00 - 1:40 | Dynamic Day-Night Cycle**:
-  - Point out the sky changing from Dawn to bright Day, into Sunset, and then starry Night.
-  - Point out the Sun rotating with rays, and the Moon with craters rising at night alongside twinkling stars.
-  - Mention the linear color interpolation (`lerp`) technique used.
+**0:55 – 1:30 | Day-Night Cycle**
+- Point out the sky transitioning: Dawn → Day → Dusk → Night.
+- Show the Sun arc and crescent Moon with twinkling stars.
+- Mention: *"We used RGB linear interpolation (`lerp`) for all sky color transitions."*
 
-- **1:40 - 2:15 | Collision Detection & Hitbox Debugger**:
-  - Press `[H]` to toggle on the green and red hitboxes live!
-  - Explain the AABB (Axis-Aligned Bounding Box) algorithm.
-  - Intentionally crash into an obstacle to demonstrate the radial particle explosion and Game Over screen with score comparison.
+**1:30 – 1:55 | Dinosaur Themes**
+- Press `T` to cycle through the 5 color themes.
+- Show how the dino glows at night with ambient shading.
 
-- **2:15 - 2:30 | Conclusion**:
-  - Show the restart feature with `[R]`.
-  - Conclude: *"Thank you for watching our demonstration!"*
+**1:55 – 2:20 | Collision Detection**
+- Press `H` to toggle the green/red AABB hitboxes.
+- Intentionally crash into an obstacle.
+- Show the Game Over screen and score, then restart with `R`.
+
+**2:20 – 2:30 | Conclusion**
+> *"This project demonstrates orthographic projection, parallax scrolling, sprite animation,
+> AABB collision detection, and real-time color interpolation. Thank you!"*

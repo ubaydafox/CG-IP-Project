@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "g++",
+      "args": [
+        "-O2",
+        "-I${workspaceFolder}/include",
+        "${workspaceFolder}/src/main.cpp",
+        "-lfreeglut", "-lopengl32", "-lglu32", "-lwinmm",
+        "-o", "${workspaceFolder}/ChronoRun.exe"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    }
+  ]
+}
