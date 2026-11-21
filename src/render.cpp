@@ -1,0 +1,295 @@
+#define _USE_MATH_DEFINES
+#define NOMINMAX
+#include "config.h"
+#include "colors.h"
+#include "state.h"
+#include "sprites.h"
+#include "draw.h"
+#include "world.h"
+#include "daynight.h"
+#include "audio.h"
+#include "render.h"
+#include <GL/glut.h>
+#include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <iomanip>
+#include <string>
+
+// ============================================================================
+// Rendering
+// ============================================================================
+void renderBackground() {
+    float t = fmodf(cycleT, CYCLE);
+
+    // Sun (day) - soft pale gold disc on an arc
+    if (nightF < 0.5f) {
+        float p = t < DAY_END ? t / DAY_END : 1.f;
+        float sx = 80.f + 840.f * p, sy = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
+        setColor(lerp(bgCol, ColorRGB(0.99f, 0.80f, 0.40f), 0.55f));
+        fillCircle(sx, sy, 18.f, 28);
+    } else {
+        // Stars
+        glBegin(GL_QUADS);
+        for (const auto& s : stars) {
+            float tw = 0.4f + 0.6f * (0.5f + 0.5f * sinf(glutGet(GLUT_ELAPSED_TIME) * 0.003f + s.tw));
+            setColor(tone(tw * 0.8f));
+            glVertex2f(s.x, s.y); glVertex2f(s.x + 2, s.y); glVertex2f(s.x + 2, s.y + 2); glVertex2f(s.x, s.y + 2);
+        }
+        glEnd();
+        // Crescent moon
+        float p = (t - DAY_END) / (NIGHT_END + FADE - DAY_END);
+        float mx = 80.f + 840.f * p, my = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
+        setColor(tone(0.9f)); fillCircle(mx, my, 15.f, 28);
+        setColor(bgCol);      fillCircle(mx + 7.f, my + 4.f, 13.f, 28);
+    }
+
+    // Clouds (flat, faint)
+    setColor(tone(0.10f));
+    for (const auto& c : clouds) {
+        float s = c.s;
+        fillRect(c.x, c.y, 70.f * s, 10.f * s);
+        fillCircle(c.x + 18.f * s, c.y + 10.f * s, 12.f * s, 16);
+        fillCircle(c.x + 38.f * s, c.y + 14.f * s, 16.f * s, 16);
+        fillCircle(c.x + 56.f * s, c.y + 8.f * s,  10.f * s, 16);
+    }
+
+    // Far skyline (very faint) then near skyline (faint)
+    setColor(tone(0.07f));
+    for (const auto& b : farB) fillRect(b.x, GROUND_Y, b.w, b.h);
+    setColor(tone(0.13f));
+    for (const auto& b : nearB) fillRect(b.x, GROUND_Y, b.w, b.h);
+
+    // Lit windows at night only
+    if (nightF > 0.5f) {
+        setColor(tone(0.40f));
+        for (const auto& b : nearB)
+            for (int c = 0; c < b.cols && c < 4; ++c)
+                for (int r = 0; r < b.rows && r < 6; ++r) {
+                    if (!b.lit[c][r]) continue;
+                    float wx = b.x + (c + 1) * b.w / (b.cols + 1) - 2.f;
+                    float wy = GROUND_Y + (r + 1) * b.h / (b.rows + 1) - 2.f;
+                    fillRect(wx, wy, 4.f, 4.f);
+                }
+    }
+}
+
+void renderGround() {
+    setColor(inkCol);
+    fillRect(0, GROUND_Y - 1.f, WIN_W, 2.f);           // ground line
+
+    glLineWidth(2.f);
+    for (const auto& b : bumps) {                        // small road bumps
+        glBegin(GL_LINE_STRIP);
+        glVertex2f(b.x, GROUND_Y); glVertex2f(b.x + 4, GROUND_Y + 4);
+        glVertex2f(b.x + b.w - 4, GROUND_Y + 4); glVertex2f(b.x + b.w, GROUND_Y);
+        glEnd();
+    }
+    glLineWidth(1.f);
+
+    setColor(tone(0.75f));
+    for (const auto& d : dashes) fillRect(d.x, d.y, d.w, 2.f);
+}
+
+void renderRunner() {
+    int frame = ((int)runAnim) % 2;
+    if (gState == STATE_START) frame = 0;
+
+    if (gState == STATE_GAME_OVER) {
+        drawDinoSprite(DINO_CRASH, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else if (ducking && grounded) {
+        drawDinoSprite(frame ? DINO_DUCK_B : DINO_DUCK_A, 19, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else if (!grounded) {
+        drawDinoSprite(DINO_JUMP, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    } else {
+        drawDinoSprite(frame ? DINO_RUN_B : DINO_RUN_A, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+    }
+}
+
+// Traffic cone silhouette with two background-coloured reflective bands
+void drawCone(float ox) {
+    setColor(inkCol);
+    fillRect(ox, 0, 26, 4);
+    glBegin(GL_QUADS);
+    glVertex2f(ox + 3, 4); glVertex2f(ox + 23, 4); glVertex2f(ox + 15, 44); glVertex2f(ox + 11, 44);
+    glEnd();
+    setColor(bgCol);
+    glBegin(GL_QUADS);
+    glVertex2f(ox + 5.8f, 18); glVertex2f(ox + 20.2f, 18); glVertex2f(ox + 18.8f, 25); glVertex2f(ox + 7.2f, 25);
+    glVertex2f(ox + 8.6f, 32); glVertex2f(ox + 17.4f, 32); glVertex2f(ox + 16.6f, 36); glVertex2f(ox + 9.4f, 36);
+    glEnd();
+}
+
+void renderObstacles() {
+    for (const auto& o : obstacles) {
+        glPushMatrix();
+        glTranslatef(o.x, o.y, 0.f);
+        switch (o.type) {
+            case OBS_CONE:  drawCone(0);  break;
+            case OBS_CONE2: drawCone(0); drawCone(28); break;
+            case OBS_BARRIER: {
+                setColor(inkCol);
+                fillRect(6, 0, 5, 24);  fillRect(45, 0, 5, 24);   // legs
+                fillRect(2, 0, 13, 3);  fillRect(41, 0, 13, 3);   // feet
+                fillRect(0, 22, 56, 16);                          // plank
+                fillRect(26, 38, 4, 4);                           // warning lamp
+                setColor(bgCol);                                  // diagonal stripes
+                glBegin(GL_QUADS);
+                for (int i = 0; i < 4; ++i) {
+                    float x0 = 4.f + i * 13.f;
+                    float x1 = std::min(x0 + 12.f, 54.f);
+                    glVertex2f(x0, 25); glVertex2f(x0 + 5, 25);
+                    glVertex2f(x1, 35); glVertex2f(x1 - 5, 35);
+                }
+                glEnd();
+                break;
+            }
+            case OBS_BOLLARD: {
+                float hs[3] = { 38.f, 48.f, 38.f };
+                for (int i = 0; i < 3; ++i) {
+                    float bx = i * 16.f, h = hs[i];
+                    setColor(inkCol);
+                    fillRect(bx, 0, 12, h - 6);
+                    fillCircle(bx + 6, h - 6, 6, 14);
+                    setColor(bgCol);
+                    fillRect(bx, h - 20, 12, 4);
+                }
+                break;
+            }
+            case OBS_DRONE_HIGH:
+            case OBS_DRONE_LOW: {
+                setColor(inkCol);
+                fillRect(10, 6, 34, 10);          // body
+                fillCircle(27, 16, 7, 16);        // dome
+                fillRect(0, 16, 54, 3);           // arms
+                fillRect(14, 0, 3, 6); fillRect(37, 0, 3, 6); // legs
+                float rw = 4.f + 14.f * fabsf(cosf(o.anim * 20.f)); // spinning rotors
+                fillRect(5 - rw * 0.5f, 21, rw, 2); fillRect(49 - rw * 0.5f, 21, rw, 2);
+                setColor(bgCol);
+                fillRect(32, 10, 5, 3);           // camera lens
+                break;
+            }
+        }
+        glPopMatrix();
+    }
+}
+
+void renderParticles() {
+    glBegin(GL_QUADS);
+    for (const auto& p : particles) {
+        setColor(tone(p.life * 0.8f));
+        glVertex2f(p.x, p.y); glVertex2f(p.x + p.size, p.y);
+        glVertex2f(p.x + p.size, p.y + p.size); glVertex2f(p.x, p.y + p.size);
+    }
+    glEnd();
+}
+
+RectAABB runnerBox() {
+    if (ducking && grounded) return { rX + 16.f, rY, 78.f, 36.f };
+    return                          { rX + 38.f, rY, 48.f, 68.f };
+}
+RectAABB obstBox(const Obstacle& o) { return { o.x + 4.f, o.y, o.w - 8.f, o.h - 2.f }; }
+
+void renderHitboxes() {
+    if (!showHB) return;
+    glLineWidth(2.f);
+    glColor3f(0.1f, 0.8f, 0.2f);
+    RectAABB r = runnerBox(); outlineRect(r.x, r.y, r.w, r.h);
+    glColor3f(0.9f, 0.15f, 0.15f);
+    for (const auto& o : obstacles) { RectAABB b = obstBox(o); outlineRect(b.x, b.y, b.w, b.h); }
+    glLineWidth(1.f);
+}
+
+void drawRestartIcon(float cx, float cy) {
+    setColor(inkCol);
+    glLineWidth(3.f);
+    glBegin(GL_LINE_STRIP);
+    for (int i = 0; i <= 24; ++i) {
+        float a = (40.f + i * (280.f / 24.f)) * (float)M_PI / 180.f;
+        glVertex2f(cx + cosf(a) * 14.f, cy + sinf(a) * 14.f);
+    }
+    glEnd();
+    glLineWidth(1.f);
+    float ex = cx + cosf(40.f * (float)M_PI / 180.f) * 14.f;
+    float ey = cy + sinf(40.f * (float)M_PI / 180.f) * 14.f;
+    glBegin(GL_TRIANGLES);
+    glVertex2f(ex - 7, ey + 2); glVertex2f(ex + 5, ey + 6); glVertex2f(ex + 3, ey - 7);
+    glEnd();
+}
+
+void renderHUD() {
+    void* mono = GLUT_BITMAP_9_BY_15;
+
+    // Score (top-right, Chrome style). Current score blinks at every 100 pts.
+    std::stringstream hi, cur;
+    hi  << "HI " << std::setfill('0') << std::setw(5) << highScore;
+    cur << std::setfill('0') << std::setw(5) << (int)score;
+    float curW = strW(cur.str(), mono);
+    setColor(tone(0.70f));
+    drawStr(WIN_W - 30.f - curW - 20.f - strW(hi.str(), mono), WIN_H - 40.f, hi.str(), mono);
+    bool hideCur = blinkTimer > 0.f && fmodf(blinkTimer, 0.3f) < 0.15f;
+    if (!hideCur) { setColor(inkCol); drawStr(WIN_W - 30.f - curW, WIN_H - 40.f, cur.str(), mono); }
+
+    // Time-of-day indicator (top-left)
+    const char* names[4] = { "DAWN", "DAY", "DUSK", "NIGHT" };
+    setColor(tone(0.60f));
+    drawStr(30.f, WIN_H - 40.f, names[gPhase], mono);
+    if (showHB) drawStr(100.f, WIN_H - 40.f, "[HITBOX]", mono);
+
+    // Bottom help line
+    setColor(tone(0.50f));
+    if (gState != STATE_START)
+        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   P pause   R restart   H hitbox   M sound: "
+                 + (soundOn ? "on" : "off") + "   ESC quit",
+                 GLUT_BITMAP_8_BY_13);
+
+    if (gState == STATE_START) {
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 300.f, "CHRONO RUN : DN DASH", GLUT_BITMAP_TIMES_ROMAN_24);
+        setColor(tone(0.80f));
+        drawStrC(WIN_W * 0.5f, 265.f, "Press SPACE to start", mono);
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 240.f, "Jump over cones, barriers & bollards  -  Duck under high drones", GLUT_BITMAP_8_BY_13);
+        setColor(curBodyCol);
+        drawStrC(WIN_W * 0.5f, 218.f, std::string("Dino Theme: [T] ") + THEMES[currentTheme].name, mono);
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 200.f, "Made by - Ubayda & Rony", mono);
+        setColor(tone(0.50f));
+        drawStrC(WIN_W * 0.5f, 50.f, "Nahdiul Islam Rony (231-115-069)  &  Abu Ubayda (231-115-080)", GLUT_BITMAP_8_BY_13);
+        drawStrC(WIN_W * 0.5f, 32.f, "CSE-402 CG & IP Lab  |  Lecturer: Shrabanti Chowdhury  |  Section B", GLUT_BITMAP_8_BY_13);
+    } else if (gState == STATE_PAUSED) {
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 280.f, "P A U S E D", GLUT_BITMAP_TIMES_ROMAN_24);
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 250.f, "Press P to resume", mono);
+        drawStrC(WIN_W * 0.5f, 215.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
+    } else if (gState == STATE_GAME_OVER) {
+        setColor(inkCol);
+        drawStrC(WIN_W * 0.5f, 300.f, "G A M E   O V E R", GLUT_BITMAP_TIMES_ROMAN_24);
+        drawRestartIcon(WIN_W * 0.5f, 262.f);
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 222.f, "Press SPACE or R to restart", mono);
+        if ((int)score >= highScore && score > 5.f) {
+            setColor(inkCol);
+            drawStrC(WIN_W * 0.5f, 198.f, "NEW HIGH SCORE!", mono);
+        }
+        setColor(tone(0.60f));
+        drawStrC(WIN_W * 0.5f, 172.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
+    }
+}
+
+void display() {
+    updatePalette();
+    glClearColor(bgCol.r, bgCol.g, bgCol.b, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    renderBackground();
+    renderGround();
+    renderObstacles();
+    renderRunner();
+    renderParticles();
+    renderHitboxes();
+    renderHUD();
+
+    glutSwapBuffers();
+}
