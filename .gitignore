@@ -4,10 +4,18 @@
 bin/
 obj/
 
+# Code::Blocks temporary & layout files
+*.layout
+*.depend
+
 # Scratch / temp files
 scratch/
 *.tmp
 *.log
+highscore.txt
+chronorun_*.bmp
+ChronoRun_test.exe
+src/main_backup.cpp.txt
 
 # Windows system files
 Thumbs.db
@@ -18,4 +26,3 @@ $RECYCLE.BIN/
 __pycache__/
 *.py[cod]
 *.pyc
-

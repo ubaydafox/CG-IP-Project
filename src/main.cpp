@@ -46,6 +46,7 @@
 #include "render.h"
 #include "game.h"
 #include "input.h"
+#include "highscore.h"
 
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
@@ -59,6 +60,7 @@ int main(int argc, char** argv) {
     glutIgnoreKeyRepeat(1);
 
     initWorld();
+    loadHighScore();
     initSounds();
     lastTime = glutGet(GLUT_ELAPSED_TIME);
 

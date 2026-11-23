@@ -43,15 +43,6 @@ void initWorld() {
     for (int i = 0; i < 45; ++i) stars.push_back({ frand(0, WIN_W), frand(240, WIN_H - 50), frand(0, 10) });
 }
 
-void resetGame() {
-    obstacles.clear(); particles.clear();
-    rY = GROUND_Y; rVY = 0.f; grounded = true; ducking = false; runAnim = 0.f;
-    gameSpeed = BASE_SPEED; score = 0.f; cycleT = 0.f;
-    lastMile = 0; blinkTimer = 0.f;
-    spawnAcc = 0.f; nextSpawn = 400.f;
-    gState = STATE_PLAYING;
-}
-
 void spawnDust(float x, float y, int n) {
     for (int i = 0; i < n; ++i)
         particles.push_back({ x + frand(-6, 6), y + frand(0, 4), frand(-2.5f, -0.5f), frand(0.3f, 1.8f),
@@ -73,4 +64,34 @@ void spawnObstacle() {
         }
     }
     obstacles.push_back(o);
+}
+
+void scrollWorld(float dt) {
+    // Parallax layers
+    auto scrollLayer = [&](std::vector<Building>& L, float k, bool isFar) {
+        float maxRight = 0.f;
+        for (auto& b : L) { b.x -= gameSpeed * k * dt; maxRight = std::max(maxRight, b.x + b.w); }
+        for (auto& b : L) {
+            if (b.x + b.w < 0.f) {
+                Building nb = makeBuilding(maxRight + (isFar ? frand(4, 30) : frand(20, 90)), isFar);
+                b = nb;
+                maxRight = b.x + b.w;
+            }
+        }
+    };
+    scrollLayer(farB, 0.10f, true);
+    scrollLayer(nearB, 0.25f, false);
+
+    for (auto& c : clouds) {
+        c.x -= 0.25f * dt;
+        if (c.x < -100.f) { c.x = WIN_W + frand(20, 200); c.y = frand(250, 360); }
+    }
+    for (auto& d : dashes) {
+        d.x -= gameSpeed * dt;
+        if (d.x < -12.f) { d.x = WIN_W + frand(0, 40); d.y = frand(GROUND_Y - 30, GROUND_Y - 6); d.w = frand(2, 10); }
+    }
+    for (auto& b : bumps) {
+        b.x -= gameSpeed * dt;
+        if (b.x < -40.f) { b.x = WIN_W + frand(50, 500); b.w = frand(14, 30); }
+    }
 }

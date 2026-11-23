@@ -8,7 +8,9 @@
 #include "world.h"
 #include "daynight.h"
 #include "audio.h"
+#include "game.h"
 #include "render.h"
+#include "highscore.h"
 #include <GL/glut.h>
 #include <algorithm>
 #include <cmath>
@@ -16,32 +18,46 @@
 #include <iomanip>
 #include <string>
 
+extern int gVpX, gVpY, gVpW, gVpH;
+
 // ============================================================================
 // Rendering
 // ============================================================================
 void renderBackground() {
     float t = fmodf(cycleT, CYCLE);
 
-    // Sun (day) - soft pale gold disc on an arc
-    if (nightF < 0.5f) {
-        float p = t < DAY_END ? t / DAY_END : 1.f;
-        float sx = 80.f + 840.f * p, sy = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
-        setColor(lerp(bgCol, ColorRGB(0.99f, 0.80f, 0.40f), 0.55f));
-        fillCircle(sx, sy, 18.f, 28);
-    } else {
-        // Stars
+    // ---- Sun: rises on the left, sets on the right, fades in/out with the sky ----
+    {
+        float span   = DAY_END + FADE;                        // sun crosses 0..94 s
+        float sunVis = smooth01(t / 4.f) * (1.f - nightF);    // fade in at dawn, out at dusk
+        if (t < span && sunVis > 0.01f) {
+            float p  = t / span;
+            float sx = 80.f + 840.f * p;
+            float sy = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
+            setColor(lerp(bgCol, ColorRGB(0.99f, 0.80f, 0.40f), 0.55f * sunVis));
+            fillCircle(sx, sy, 18.f, 28);
+        }
+    }
+
+    // ---- Stars and moon: fade in with nightF, so nothing pops in or out ----
+    if (nightF > 0.01f) {
+        ColorRGB light(0.86f, 0.86f, 0.88f);
         glBegin(GL_QUADS);
         for (const auto& s : stars) {
             float tw = 0.4f + 0.6f * (0.5f + 0.5f * sinf(glutGet(GLUT_ELAPSED_TIME) * 0.003f + s.tw));
-            setColor(tone(tw * 0.8f));
-            glVertex2f(s.x, s.y); glVertex2f(s.x + 2, s.y); glVertex2f(s.x + 2, s.y + 2); glVertex2f(s.x, s.y + 2);
+            setColor(lerp(bgCol, light, nightF * tw * 0.8f));
+            glVertex2f(s.x, s.y); glVertex2f(s.x + 2, s.y);
+            glVertex2f(s.x + 2, s.y + 2); glVertex2f(s.x, s.y + 2);
         }
         glEnd();
-        // Crescent moon
-        float p = (t - DAY_END) / (NIGHT_END + FADE - DAY_END);
-        float mx = 80.f + 840.f * p, my = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
-        setColor(tone(0.9f)); fillCircle(mx, my, 15.f, 28);
-        setColor(bgCol);      fillCircle(mx + 7.f, my + 4.f, 13.f, 28);
+
+        float p = (t - DAY_END) / (CYCLE - DAY_END);
+        if (p < 0.f) p = 0.f;
+        if (p > 1.f) p = 1.f;
+        float mx = 80.f + 840.f * p;
+        float my = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
+        setColor(lerp(bgCol, light, nightF)); fillCircle(mx, my, 15.f, 28);   // moon disc
+        setColor(bgCol);                      fillCircle(mx + 7.f, my + 4.f, 13.f, 28);  // crescent cut
     }
 
     // Clouds (flat, faint)
@@ -184,12 +200,6 @@ void renderParticles() {
     glEnd();
 }
 
-RectAABB runnerBox() {
-    if (ducking && grounded) return { rX + 16.f, rY, 78.f, 36.f };
-    return                          { rX + 38.f, rY, 48.f, 68.f };
-}
-RectAABB obstBox(const Obstacle& o) { return { o.x + 4.f, o.y, o.w - 8.f, o.h - 2.f }; }
-
 void renderHitboxes() {
     if (!showHB) return;
     glLineWidth(2.f);
@@ -269,7 +279,7 @@ void renderHUD() {
         drawRestartIcon(WIN_W * 0.5f, 262.f);
         setColor(tone(0.60f));
         drawStrC(WIN_W * 0.5f, 222.f, "Press SPACE or R to restart", mono);
-        if ((int)score >= highScore && score > 5.f) {
+        if ((int)score > prevBest && score > 5.f) {
             setColor(inkCol);
             drawStrC(WIN_W * 0.5f, 198.f, "NEW HIGH SCORE!", mono);
         }
@@ -280,6 +290,15 @@ void renderHUD() {
 
 void display() {
     updatePalette();
+
+    // 1) Clear the whole window to dark (these become the letterbox bars)
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(0.05f, 0.05f, 0.07f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // 2) Clear only the game area with the sky colour
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(gVpX, gVpY, gVpW, gVpH);
     glClearColor(bgCol.r, bgCol.g, bgCol.b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -290,6 +309,8 @@ void display() {
     renderParticles();
     renderHitboxes();
     renderHUD();
+    // applyPostFilter();   // <- the image-processing line goes here (Batch 2), if you already added it
 
+    glDisable(GL_SCISSOR_TEST);
     glutSwapBuffers();
 }

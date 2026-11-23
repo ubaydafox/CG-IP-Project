@@ -20,17 +20,7 @@ enum GameState { STATE_START = 0, STATE_PLAYING, STATE_PAUSED, STATE_GAME_OVER }
 enum DayPhase  { PHASE_DAWN = 0, PHASE_DAY, PHASE_DUSK, PHASE_NIGHT };
 
 // ============================================================================
-// Theme struct (defined here so state.h and sprites.h can both use it)
-// ============================================================================
-struct ThemeColors {
-    const char* name;
-    ColorRGB body;
-    ColorRGB belly;
-    ColorRGB eye;
-};
-
-// ============================================================================
-// Global variable declarations (definitions live in .cpp files)
+// Global variable declarations (definitions in state.cpp)
 // ============================================================================
 
 // Day/night state

@@ -1,7 +1,16 @@
 #pragma once
 
 #include "colors.h"
-#include "state.h"
+
+// ============================================================================
+// Dynamic Themes (Changeable anytime with [T])
+// ============================================================================
+struct ThemeColors {
+    const char* name;
+    ColorRGB body;
+    ColorRGB belly;
+    ColorRGB eye;
+};
 
 // ============================================================================
 // Sprite array extern declarations

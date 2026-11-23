@@ -22,4 +22,4 @@ extern bool soundOn;
 // ============================================================================
 std::vector<char> synthWav(const std::vector<Tone>& tones);
 void initSounds();
-void playSnd(std::vector<char>& buf);
+void playSnd(const std::vector<char>& w);

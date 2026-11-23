@@ -6,6 +6,7 @@
 #include "daynight.h"
 #include <cmath>
 
+// ============================================================================
 // Day-night palette (Chrome-style: dark ink by day, inverted at night)
 // ============================================================================
 void updatePalette() {
