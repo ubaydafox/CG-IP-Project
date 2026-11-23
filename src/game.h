@@ -17,3 +17,7 @@ void timerCB(int val);
 extern float jumpBuf;    // frames left in which an early jump press is remembered
 extern bool  jumpHeld;   // is the jump key still held down?
 
+extern float shakeT;                    // frames of screen shake left
+const float SHAKE_FRAMES = 18.0f;
+
+

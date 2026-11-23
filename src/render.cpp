@@ -14,6 +14,7 @@
 #include "imgproc.h"
 #include <GL/glut.h>
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -128,12 +129,30 @@ void renderGround() {
     for (const auto& d : dashes) fillRect(d.x, d.y, d.w, 2.f);
 }
 
+// Soft ellipse under the runner; smaller and fainter the higher the jump
+static void drawShadow() {
+    float h = rY - GROUND_Y; if (h < 0.f) h = 0.f;
+    float k = 1.f - std::min(h / 160.f, 1.f) * 0.65f;
+    bool  duck = ducking && grounded;
+    float cx = rX + (duck ? 62.f : 66.f);
+    float rx = (duck ? 46.f : 34.f) * k, ry = 4.f * k;
+    glColor4f(0.f, 0.f, 0.f, 0.22f * k);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(cx, GROUND_Y - 3.f);
+    for (int i = 0; i <= 24; ++i) {
+        float a = i * 2.f * (float)M_PI / 24.f;
+        glVertex2f(cx + cosf(a) * rx, GROUND_Y - 3.f + sinf(a) * ry);
+    }
+    glEnd();
+}
+
 void renderRunner() {
+    drawShadow();
     int frame = ((int)runAnim) % 2;
     if (gState == STATE_START) frame = 0;
 
     if (gState == STATE_GAME_OVER) {
-        drawDinoSprite(DINO_CRASH, 37, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
+        drawDinoSprite(DINO_CRASH, 37, rX - 16.f, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
     } else if (ducking && grounded) {
         drawDinoSprite(frame ? DINO_DUCK_B : DINO_DUCK_A, 19, rX, rY, DINO_PX, curBodyCol, curBellyCol, curEyeCol);
     } else if (!grounded) {
@@ -204,6 +223,10 @@ void renderObstacles() {
                 fillRect(5 - rw * 0.5f, 21, rw, 2); fillRect(49 - rw * 0.5f, 21, rw, 2);
                 setColor(bgCol);
                 fillRect(32, 10, 5, 3);           // camera lens
+                if (nightF > 0.05f) {                 // glowing lens at night
+                    glColor4f(1.f, 0.30f, 0.25f, 0.20f * nightF); fillCircle(34.5f, 11.5f, 12.f, 20);
+                    glColor4f(1.f, 0.45f, 0.35f, 0.90f * nightF); fillCircle(34.5f, 11.5f, 2.5f, 12);
+                }
                 break;
             }
         }
@@ -312,23 +335,32 @@ void renderHUD() {
 void display() {
     updatePalette();
 
-    // 1) Clear the whole window to dark (these become the letterbox bars)
     glDisable(GL_SCISSOR_TEST);
-    glClearColor(0.05f, 0.05f, 0.07f, 1.f);
+    glClearColor(0.05f, 0.05f, 0.07f, 1.f);       // dark letterbox bars
     glClear(GL_COLOR_BUFFER_BIT);
-
-    // 2) Clear only the game area with the sky colour
     glEnable(GL_SCISSOR_TEST);
     glScissor(gVpX, gVpY, gVpW, gVpH);
     glClearColor(bgCol.r, bgCol.g, bgCol.b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    glPushMatrix();                               // shake moves the world, not the HUD
+    if (shakeT > 0.f) {
+        float m = 7.f * std::min(shakeT / SHAKE_FRAMES, 1.f);
+        glTranslatef(((rand() % 2001) / 1000.f - 1.f) * m, ((rand() % 2001) / 1000.f - 1.f) * m, 0.f);
+    }
     renderBackground();
     renderGround();
     renderObstacles();
     renderRunner();
     renderParticles();
     renderHitboxes();
+    glPopMatrix();
+
+    if (shakeT > 0.f) {                           // white impact flash
+        glColor4f(1.f, 1.f, 1.f, 0.30f * std::min(shakeT / SHAKE_FRAMES, 1.f));
+        fillRect(0, 0, (float)WIN_W, (float)WIN_H);
+    }
+
     renderHUD();
     applyPostFilter();
 

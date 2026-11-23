@@ -13,6 +13,7 @@
 
 float jumpBuf  = 0.f;
 bool  jumpHeld = false;
+float shakeT   = 0.f;
 
 bool aabbCollide(const RectAABB& a, const RectAABB& b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -31,6 +32,7 @@ void resetGame() {
     rY = GROUND_Y;
     rVY = 0.f;
     jumpBuf = 0.f;
+    shakeT = 0.f;
     grounded = true;
     ducking = false;
     runAnim = 0.f;
@@ -46,6 +48,7 @@ void resetGame() {
 }
 
 void updateGame(float dt) {
+    if (shakeT > 0.f) shakeT -= dt;
     if (gState == STATE_START) cycleT += dt / 60.f * 4.f;   // title screen: sky drifts 4x faster
     if (gState != STATE_PLAYING) {
         // Let crash particles settle on game over
@@ -90,6 +93,12 @@ void updateGame(float dt) {
         }
     }
 
+    if (grounded) {                                   // dust puffs behind the feet while running
+        static float dustAcc = 0.f;
+        dustAcc += dt * (gameSpeed / BASE_SPEED);
+        if (dustAcc > 7.f) { dustAcc = 0.f; spawnDust(rX + 48.f, GROUND_Y, 1); }
+    }
+
     runAnim += 0.15f * (gameSpeed / BASE_SPEED) * dt;
 
     scrollWorld(dt);
@@ -115,6 +124,7 @@ void updateGame(float dt) {
         if (aabbCollide(rb, obstBox(obstacles[i]))) {
             gState = STATE_GAME_OVER;
             saveHighScore();
+            shakeT = SHAKE_FRAMES;
             playSnd(sndOver);
             for (int k = 0; k < 14; ++k)
                 particles.push_back({ rX + 30.f, rY + 40.f, frand(-3, 3), frand(-1, 4), 1.f, frand(0.02f, 0.04f), frand(3, 5) });
