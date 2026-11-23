@@ -17,7 +17,6 @@
 					<Add directory="include" />
 				</Compiler>
 				<Linker>
-					<Add option="-static" />
 					<Add library="freeglut" />
 					<Add library="opengl32" />
 					<Add library="glu32" />
@@ -37,7 +36,6 @@
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
-					<Add option="-static" />
 					<Add library="freeglut" />
 					<Add library="opengl32" />
 					<Add library="glu32" />
@@ -51,14 +49,36 @@
 			<Add directory="include" />
 		</Compiler>
 		<Linker>
-			<Add option="-static" />
 			<Add library="freeglut" />
 			<Add library="opengl32" />
 			<Add library="glu32" />
 			<Add library="winmm" />
 			<Add directory="lib" />
 		</Linker>
+		<Unit filename="src/audio.cpp" />
+		<Unit filename="src/audio.h" />
+		<Unit filename="src/colors.cpp" />
+		<Unit filename="src/colors.h" />
+		<Unit filename="src/config.h" />
+		<Unit filename="src/daynight.cpp" />
+		<Unit filename="src/daynight.h" />
+		<Unit filename="src/draw.cpp" />
+		<Unit filename="src/draw.h" />
+		<Unit filename="src/game.cpp" />
+		<Unit filename="src/game.h" />
+		<Unit filename="src/highscore.cpp" />
+		<Unit filename="src/highscore.h" />
+		<Unit filename="src/input.cpp" />
+		<Unit filename="src/input.h" />
 		<Unit filename="src/main.cpp" />
+		<Unit filename="src/render.cpp" />
+		<Unit filename="src/render.h" />
+		<Unit filename="src/sprites.cpp" />
+		<Unit filename="src/sprites.h" />
+		<Unit filename="src/state.cpp" />
+		<Unit filename="src/state.h" />
+		<Unit filename="src/world.cpp" />
+		<Unit filename="src/world.h" />
 		<Extensions>
 			<lib_finder disable_auto="1" />
 		</Extensions>
