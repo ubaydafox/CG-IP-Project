@@ -21,34 +21,32 @@
 
 ```
 CG-IP-Project/
-│
 ├── src/
-│   └── main.cpp                  ← Complete C++ OpenGL source code
-│
-├── include/GL/                   ← FreeGLUT headers (freeglut.h, glut.h …)
-├── lib/                          ← FreeGLUT static library (libfreeglut.a)
-│
-├── docs/
-│   └── index.html                ← Web / browser version (GitHub Pages)
-│
-├── presentation/
-│   └── Chrono_Run_DN_Dash_Presentation.pptx
-│
-├── .vscode/                      ← VS Code build / debug / IntelliSense config
-│   ├── c_cpp_properties.json
-│   ├── launch.json
-│   ├── settings.json
-│   └── tasks.json
-│
-├── ChronoRun.exe                 ← Pre-compiled Windows executable
-├── ChronoRun.cbp                 ← Code::Blocks project file
-├── freeglut.dll                  ← Runtime DLL (must stay next to .exe)
-│
-├── build.bat                     ← One-click build script (MinGW g++)
-├── run.bat                       ← One-click launcher
-├── DEMO_VIDEO_INSTRUCTIONS.md    ← Guide for recording the demo video
-└── README.md                     ← This file
+│   ├── main.cpp        ← window setup + callbacks
+│   ├── config.h        ← constants
+│   ├── colors.h        ← ColorRGB, lerp, smooth01
+│   ├── state.h         ← shared structs, enums, globals
+│   ├── sprites.*       ← pixel-art sprites + dino themes
+│   ├── audio.*         ← synthesized sound effects
+│   ├── draw.*          ← drawing primitives, sprite renderer
+│   ├── world.*         ← obstacle / skyline generation, scrolling
+│   ├── daynight.*      ← day-night palette, sky gradient, phase skip
+│   ├── render.*        ← scene, HUD, display()
+│   ├── game.*          ← physics, collision, spawning
+│   ├── input.*         ← keyboard, mouse, resize/letterbox
+│   ├── highscore.*     ← save/load best score
+│   └── imgproc.*       ← image-processing filters + BMP screenshot
+├── include/GL/  lib/  docs/  presentation/
+├── build.bat  run.bat  ChronoRun.exe  freeglut.dll
 ```
+
+---
+
+## 📸 Gameplay Screenshots
+
+| Daytime & Parallax Skyline | Night Atmosphere & Dino Glow | Post-Processing Filter |
+| :---: | :---: | :---: |
+| ![Daytime](docs/screenshots/chronorun_1.png) | ![Night](docs/screenshots/chronorun_2.png) | ![Filter](docs/screenshots/chronorun_3.png) |
 
 ---
 
@@ -149,6 +147,35 @@ Then visit: **http://localhost:8000**
 
 ---
 
+## 🧮 Algorithms & Formulas
+
+| Topic | Formula / Method |
+| :--- | :--- |
+| Linear interpolation (day-night colours) | `C(t) = C1 + (C2 − C1) · t`, with `t` clamped to [0, 1] |
+| Smooth transition | `smooth01(t) = t² (3 − 2t)` (smoothstep, no visible "steps") |
+| Sky gradient | Two vertex colours (horizon, zenith) on one `GL_QUADS`; OpenGL interpolates between them |
+| Jump physics | `v ← v − g·dt`, `y ← y + v·dt` (delta-time, frame-rate independent) |
+| Variable jump height | Releasing the jump key early multiplies upward velocity by 0.55 |
+| Jump buffer | An early jump press is remembered for ~6 frames and fires on landing |
+| AABB collision | Overlap if `a.x < b.x+b.w ∧ a.x+a.w > b.x ∧ a.y < b.y+b.h ∧ a.y+a.h > b.y` |
+| Fair obstacle gap | `minGap = speed · (airTime + 20) + 80`, where `airTime = 2·JUMP_FORCE / GRAVITY` |
+| Speed ramp | `speed = BASE + score · RAMP`, capped at `MAX_SPEED` |
+| Parallax | Layer scroll speed = `gameSpeed · k` (far 0.10, near 0.25, ground 1.0) |
+| Grayscale | `Y = 0.299R + 0.587G + 0.114B` |
+| Sepia | 3×3 colour matrix applied to (R, G, B) |
+| Blur | Separable 5-tap box filter (horizontal then vertical), 2 passes |
+| Edge detection | Sobel kernels Gx, Gy; magnitude `√(Gx² + Gy²)` on luminance |
+| Letterboxing | Viewport scaled to fit while keeping 1000:450, centred, with `glScissor` |
+
+---
+
+## ⚠️ Notes
+- Windows only (uses `windows.h` and `PlaySound`).
+- Image filters run on the CPU after `glReadPixels`, so Blur and Edge are the heaviest.
+- Fixed logical resolution 1000×450; the window scales with letterboxing.
+
+---
+
 ## 🏙️ Obstacles
 
 | Obstacle                       | Strategy   |
@@ -174,7 +201,7 @@ Then visit: **http://localhost:8000**
 
 ## 📦 Final Submission Checklist
 
-- [x] Complete, commented `src/main.cpp`
+- [x] Modular C++ OpenGL & Image Processing codebase (`src/`)
 - [x] Pre-compiled `ChronoRun.exe` (runs without installing anything)
 - [x] Web browser version (`docs/index.html`)
 - [x] PowerPoint presentation (`presentation/`)
