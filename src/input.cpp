@@ -11,6 +11,7 @@
 #include "game.h"
 #include "input.h"
 #include "highscore.h"
+#include "imgproc.h"
 #include <GL/glut.h>
 #include <cstdlib>
 
@@ -38,6 +39,16 @@ void keyDown(unsigned char k, int, int) {
     if (k == ' ') { doJump(); return; }
     if (k == 't' || k == 'T') {
         currentTheme = (currentTheme + 1) % THEME_COUNT;
+        return;
+    }
+    if (k == 'f' || k == 'F') {
+        cycleFilter();
+        glutPostRedisplay();
+        return;
+    }
+    if (k == 's' || k == 'S') {
+        saveScreenshot();
+        glutPostRedisplay();
         return;
     }
     if (k == 'p' || k == 'P') {

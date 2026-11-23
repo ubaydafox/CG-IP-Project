@@ -11,6 +11,7 @@
 #include "game.h"
 #include "render.h"
 #include "highscore.h"
+#include "imgproc.h"
 #include <GL/glut.h>
 #include <algorithm>
 #include <cmath>
@@ -249,7 +250,7 @@ void renderHUD() {
     // Bottom help line
     setColor(tone(0.50f));
     if (gState != STATE_START)
-        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   P pause   R restart   H hitbox   M sound: "
+        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   F filter   S shot   P pause   R restart   H hitbox   M sound: "
                  + (soundOn ? "on" : "off") + "   ESC quit",
                  GLUT_BITMAP_8_BY_13);
 
@@ -309,7 +310,7 @@ void display() {
     renderParticles();
     renderHitboxes();
     renderHUD();
-    // applyPostFilter();   // <- the image-processing line goes here (Batch 2), if you already added it
+    applyPostFilter();
 
     glDisable(GL_SCISSOR_TEST);
     glutSwapBuffers();

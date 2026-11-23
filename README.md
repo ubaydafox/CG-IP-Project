@@ -89,18 +89,20 @@ Then visit: **http://localhost:8000**
 
 ## 🎮 Controls
 
-| Key                | Action                         |
-| :----------------- | :----------------------------- |
-| `SPACE` or `↑`     | Jump (hold for higher jump)    |
-| `↓`                | Duck / slide under drones      |
-| `T`                | Cycle dinosaur theme (5 skins) |
-| `P`                | Pause / Resume                 |
-| `R`                | Restart                        |
-| `H`                | Toggle AABB hitbox debugger    |
-| `M`                | Mute / unmute sound            |
-| `ESC`              | Quit                           |
-| Left Click         | Jump                           |
-| Right Click (hold) | Duck                           |
+| Key | Action |
+| :--- | :--- |
+| `SPACE` or `↑` | Jump (hold for higher jump) |
+| `↓` | Duck / slide under drones |
+| `T` | Cycle dinosaur theme (5 skins) |
+| `F` | Cycle image filter (Grayscale / Sepia / Invert / Blur / Edge) |
+| `S` | Save screenshot as BMP |
+| `P` | Pause / Resume |
+| `R` | Restart |
+| `H` | Toggle AABB hitbox debugger |
+| `M` | Mute / unmute sound |
+| `ESC` | Quit |
+| Left Click | Jump |
+| Right Click (hold) | Duck |
 
 ---
 
@@ -131,6 +133,18 @@ Then visit: **http://localhost:8000**
 | Delta-Time Physics                  | Frame-rate independent jump/gravity                          |
 | Procedural Generation               | Obstacles, buildings, clouds, stars                          |
 | Synthesized Audio                   | In-memory WAV via `PlaySound` (jump, duck, score, game-over) |
+
+### 🖼️ Image Processing Concepts
+
+| Concept | Implementation |
+| :--- | :--- |
+| Framebuffer capture | `glReadPixels` into an RGB array |
+| Grayscale | Luminance: `0.299R + 0.587G + 0.114B` |
+| Sepia | 3×3 color transform matrix |
+| Negative / invert | 255 − value per channel |
+| Blur | Separable 5-tap box filter (convolution) |
+| Edge detection | Sobel operator, gradient magnitude `√(Gx² + Gy²)` |
+| Image file output | 24-bit BMP writer (header + BGR rows) |
 
 ---
 

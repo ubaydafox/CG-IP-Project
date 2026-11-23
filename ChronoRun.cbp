@@ -68,6 +68,8 @@
 		<Unit filename="src/game.h" />
 		<Unit filename="src/highscore.cpp" />
 		<Unit filename="src/highscore.h" />
+		<Unit filename="src/imgproc.cpp" />
+		<Unit filename="src/imgproc.h" />
 		<Unit filename="src/input.cpp" />
 		<Unit filename="src/input.h" />
 		<Unit filename="src/main.cpp" />
