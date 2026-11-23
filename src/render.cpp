@@ -24,29 +24,44 @@ extern int gVpX, gVpY, gVpW, gVpH;
 // ============================================================================
 // Rendering
 // ============================================================================
+void renderSky() {
+    glBegin(GL_QUADS);                          // vertical gradient, interpolated by OpenGL
+    setColor(bgCol);     glVertex2f(0.f,   GROUND_Y); glVertex2f((float)WIN_W, GROUND_Y);
+    setColor(skyTopCol); glVertex2f((float)WIN_W, (float)WIN_H); glVertex2f(0.f, (float)WIN_H);
+    glEnd();
+}
+
 void renderBackground() {
     float t = fmodf(cycleT, CYCLE);
+    renderSky();
 
-    // ---- Sun: rises on the left, sets on the right, fades in/out with the sky ----
+    // ---- Sun with a soft glow ----
     {
-        float span   = DAY_END + FADE;                        // sun crosses 0..94 s
-        float sunVis = smooth01(t / 4.f) * (1.f - nightF);    // fade in at dawn, out at dusk
+        float span   = DAY_END + FADE;
+        float sunVis = smooth01(t / 4.f) * (1.f - nightF);
         if (t < span && sunVis > 0.01f) {
             float p  = t / span;
             float sx = 80.f + 840.f * p;
             float sy = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
-            setColor(lerp(bgCol, ColorRGB(0.99f, 0.80f, 0.40f), 0.55f * sunVis));
+
+            // glow: concentric translucent discs (alpha blending)
+            const float gr[4] = { 64.f, 48.f, 34.f, 24.f };
+            for (int i = 0; i < 4; ++i) {
+                glColor4f(1.00f, 0.82f, 0.45f, 0.07f * sunVis);
+                fillCircle(sx, sy, gr[i], 32);
+            }
+            setColor(lerp(skyAt(sy), ColorRGB(0.99f, 0.80f, 0.40f), 0.75f * sunVis));
             fillCircle(sx, sy, 18.f, 28);
         }
     }
 
-    // ---- Stars and moon: fade in with nightF, so nothing pops in or out ----
+    // ---- Stars and moon (fade in with nightF) ----
     if (nightF > 0.01f) {
         ColorRGB light(0.86f, 0.86f, 0.88f);
         glBegin(GL_QUADS);
         for (const auto& s : stars) {
             float tw = 0.4f + 0.6f * (0.5f + 0.5f * sinf(glutGet(GLUT_ELAPSED_TIME) * 0.003f + s.tw));
-            setColor(lerp(bgCol, light, nightF * tw * 0.8f));
+            setColor(lerp(skyAt(s.y), light, nightF * tw * 0.8f));
             glVertex2f(s.x, s.y); glVertex2f(s.x + 2, s.y);
             glVertex2f(s.x + 2, s.y + 2); glVertex2f(s.x, s.y + 2);
         }
@@ -57,8 +72,13 @@ void renderBackground() {
         if (p > 1.f) p = 1.f;
         float mx = 80.f + 840.f * p;
         float my = GROUND_Y + 60.f + sinf(p * (float)M_PI) * 230.f;
-        setColor(lerp(bgCol, light, nightF)); fillCircle(mx, my, 15.f, 28);   // moon disc
-        setColor(bgCol);                      fillCircle(mx + 7.f, my + 4.f, 13.f, 28);  // crescent cut
+
+        glColor4f(0.86f, 0.86f, 0.95f, 0.06f * nightF);          // faint moon glow
+        fillCircle(mx, my, 38.f, 32);
+        fillCircle(mx, my, 26.f, 32);
+
+        setColor(lerp(skyAt(my), light, nightF)); fillCircle(mx, my, 15.f, 28);       // moon disc
+        setColor(skyAt(my));                      fillCircle(mx + 7.f, my + 4.f, 13.f, 28); // crescent cut
     }
 
     // Clouds (flat, faint)
@@ -250,7 +270,7 @@ void renderHUD() {
     // Bottom help line
     setColor(tone(0.50f));
     if (gState != STATE_START)
-        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   F filter   S shot   P pause   R restart   H hitbox   M sound: "
+        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   N next phase   F filter   S shot   P pause   R restart   H hitbox   M sound: "
                  + (soundOn ? "on" : "off") + "   ESC quit",
                  GLUT_BITMAP_8_BY_13);
 

@@ -12,6 +12,7 @@
 #include "input.h"
 #include "highscore.h"
 #include "imgproc.h"
+#include "daynight.h"
 #include <GL/glut.h>
 #include <cstdlib>
 
@@ -44,6 +45,10 @@ void keyDown(unsigned char k, int, int) {
     if (k == ' ') { doJump(); return; }
     if (k == 't' || k == 'T') {
         currentTheme = (currentTheme + 1) % THEME_COUNT;
+        return;
+    }
+    if (k == 'n' || k == 'N') {
+        skipToNextPhase();
         return;
     }
     if (k == 'f' || k == 'F') {

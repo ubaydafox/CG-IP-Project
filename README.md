@@ -94,6 +94,7 @@ Then visit: **http://localhost:8000**
 | `SPACE` or `↑` | Jump (hold for higher jump) |
 | `↓` | Duck / slide under drones |
 | `T` | Cycle dinosaur theme (5 skins) |
+| `N` | Skip to the next day-night phase (demo) |
 | `F` | Cycle image filter (Grayscale / Sepia / Invert / Blur / Edge) |
 | `S` | Save screenshot as BMP |
 | `P` | Pause / Resume |

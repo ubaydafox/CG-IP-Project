@@ -46,6 +46,7 @@ void resetGame() {
 }
 
 void updateGame(float dt) {
+    if (gState == STATE_START) cycleT += dt / 60.f * 4.f;   // title screen: sky drifts 4x faster
     if (gState != STATE_PLAYING) {
         // Let crash particles settle on game over
         for (size_t i = 0; i < particles.size(); ) {
