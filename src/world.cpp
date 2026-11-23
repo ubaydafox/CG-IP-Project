@@ -51,7 +51,8 @@ void spawnDust(float x, float y, int n) {
 
 void spawnObstacle() {
     Obstacle o; o.x = WIN_W + 40.f; o.anim = 0.f;
-    if (score > 150.f && rand() % 100 < 25) {
+    int droneChance = std::min(40, 15 + (int)(score / 40.f));   // drones get more common
+    if (score > 150.f && rand() % 100 < droneChance) {
         if (rand() % 2 == 0) { o.type = OBS_DRONE_HIGH; o.w = 54; o.h = 24; o.y = GROUND_Y + 50; } // duck under
         else                 { o.type = OBS_DRONE_LOW;  o.w = 54; o.h = 24; o.y = GROUND_Y + 20; } // jump over
     } else {

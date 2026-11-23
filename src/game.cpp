@@ -11,24 +11,26 @@
 #include <algorithm>
 #include <cmath>
 
+float jumpBuf  = 0.f;
+bool  jumpHeld = false;
+
 bool aabbCollide(const RectAABB& a, const RectAABB& b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 RectAABB runnerBox() {
-    if (ducking && grounded) return { rX + 16.f, rY, 78.f, 36.f };
-    return                          { rX + 38.f, rY, 48.f, 68.f };
+    if (ducking && grounded) return { rX + 24.f, rY + 2.f, 84.f, 32.f };
+    return                          { rX + 44.f, rY + 2.f, 50.f, 62.f };
 }
-
-RectAABB obstBox(const Obstacle& o) {
-    return { o.x + 4.f, o.y, o.w - 8.f, o.h - 2.f };
-}
+// Obstacles are narrower at the top (cones, bollards), so shrink the box a bit more
+RectAABB obstBox(const Obstacle& o) { return { o.x + 6.f, o.y, o.w - 12.f, o.h - 4.f }; }
 
 void resetGame() {
     obstacles.clear();
     particles.clear();
     rY = GROUND_Y;
     rVY = 0.f;
+    jumpBuf = 0.f;
     grounded = true;
     ducking = false;
     runAnim = 0.f;
@@ -72,15 +74,18 @@ void updateGame(float dt) {
     if (blinkTimer > 0.f) blinkTimer -= dt / 60.f;
 
     // Jump physics (holding DOWN in the air = fast fall)
+    if (jumpBuf > 0.f) jumpBuf -= dt;
     if (!grounded) {
         rVY -= GRAVITY * dt;
         if (ducking) rVY -= GRAVITY * 1.5f * dt;
         rY += rVY * dt;
         if (rY <= GROUND_Y) {
-            rY = GROUND_Y;
-            rVY = 0.f;
-            grounded = true;
-            spawnDust(rX + 20.f, GROUND_Y, 5);
+            rY = GROUND_Y; rVY = 0.f; grounded = true; spawnDust(rX + 20.f, GROUND_Y, 5);
+            if (jumpBuf > 0.f) {                    // jump was pressed just before landing
+                rVY = JUMP_FORCE; grounded = false; playSnd(sndJump);
+                if (!jumpHeld) rVY *= 0.55f;        // key already released -> short hop
+                jumpBuf = 0.f;
+            }
         }
     }
 
@@ -93,7 +98,12 @@ void updateGame(float dt) {
     if (spawnAcc >= nextSpawn) {
         spawnObstacle();
         spawnAcc  = 0.f;
-        nextSpawn = 380.f + (gameSpeed - BASE_SPEED) * 40.f + frand(0, 340);
+        // Fair gap: enough distance for one full jump plus ~20 frames to react,
+        // measured at the CURRENT speed, plus margin for obstacle width.
+        float airFrames = 2.f * JUMP_FORCE / GRAVITY;          // time in the air, in frames
+        float minGap    = std::max(380.f, gameSpeed * (airFrames + 20.f) + 80.f);
+        bool  tight     = (score > 300.f && rand() % 100 < 25); // rhythm section: back-to-back
+        nextSpawn = tight ? minGap : minGap + frand(0, 340);
     }
 
     // Obstacles + AABB collision

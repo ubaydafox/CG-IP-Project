@@ -19,9 +19,13 @@
 // Input
 // ============================================================================
 void doJump() {
+    jumpHeld = true;
     if (gState == STATE_START)     { resetGame(); return; }
     if (gState == STATE_GAME_OVER) { resetGame(); return; }
-    if (gState == STATE_PLAYING && grounded) { rVY = JUMP_FORCE; grounded = false; playSnd(sndJump); }
+    if (gState == STATE_PLAYING) {
+        if (grounded) { rVY = JUMP_FORCE; grounded = false; playSnd(sndJump); }
+        else          jumpBuf = 6.f;                // remember the press for ~0.1 s
+    }
 }
 
 void startDuck() {
@@ -31,7 +35,8 @@ void startDuck() {
 }
 
 void releaseJump() {
-    if (!grounded && rVY > 4.f) rVY *= 0.55f;   // variable jump height
+    jumpHeld = false;
+    if (!grounded && rVY > 4.f) rVY *= 0.55f;       // variable jump height
 }
 
 void keyDown(unsigned char k, int, int) {

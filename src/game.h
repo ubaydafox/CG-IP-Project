@@ -13,3 +13,7 @@ RectAABB obstBox(const Obstacle& o);
 void resetGame();
 void updateGame(float dt);
 void timerCB(int val);
+
+extern float jumpBuf;    // frames left in which an early jump press is remembered
+extern bool  jumpHeld;   // is the jump key still held down?
+
