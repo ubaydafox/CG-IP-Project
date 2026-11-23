@@ -254,20 +254,75 @@ void renderHitboxes() {
     glLineWidth(1.f);
 }
 
+// ---- 5x7 pixel font, only the letters the titles need ----
+struct Glyph { char ch; const char* rows[7]; };
+static const Glyph FONT[] = {
+    {'A', {".###.","#...#","#...#","#####","#...#","#...#","#...#"}},
+    {'C', {".###.","#...#","#....","#....","#....","#...#",".###."}},
+    {'D', {"####.","#...#","#...#","#...#","#...#","#...#","####."}},
+    {'E', {"#####","#....","#....","####.","#....","#....","#####"}},
+    {'G', {".###.","#...#","#....","#.###","#...#","#...#",".###."}},
+    {'H', {"#...#","#...#","#...#","#####","#...#","#...#","#...#"}},
+    {'M', {"#...#","##.##","#.#.#","#.#.#","#...#","#...#","#...#"}},
+    {'N', {"#...#","##..#","##..#","#.#.#","#..##","#..##","#...#"}},
+    {'O', {".###.","#...#","#...#","#...#","#...#","#...#",".###."}},
+    {'P', {"####.","#...#","#...#","####.","#....","#....","#...."}},
+    {'R', {"####.","#...#","#...#","####.","#.#..","#..#.","#...#"}},
+    {'S', {".####","#....","#....",".###.","....#","....#","####."}},
+    {'U', {"#...#","#...#","#...#","#...#","#...#","#...#",".###."}},
+    {'V', {"#...#","#...#","#...#","#...#","#...#",".#.#.","..#.."}},
+    {':', {".....","..#..","..#..",".....","..#..","..#..","....."}},
+};
+
+static void drawPixelText(float x, float y, const std::string& s, float sc) {
+    float cx = x;
+    for (char c : s) {
+        for (const Glyph& g : FONT) {
+            if (g.ch != c) continue;
+            for (int r = 0; r < 7; ++r)
+                for (int col = 0; col < 5; ++col)
+                    if (g.rows[r][col] == '#') fillRect(cx + col * sc, y + (6 - r) * sc, sc, sc);
+            break;
+        }
+        cx += 6.f * sc;                                   // a space just advances
+    }
+}
+static void drawPixelTextC(float cx, float y, const std::string& s, float sc) {
+    float w = s.empty() ? 0.f : s.size() * 6.f * sc - sc;
+    drawPixelText(cx - w * 0.5f, y, s, sc);
+}
+
+// Translucent panel so text stays readable over the skyline
+static void drawPanel(float cx, float cy, float w, float h) {
+    glColor4f(bgCol.r, bgCol.g, bgCol.b, 0.90f);
+    fillRect(cx - w * 0.5f, cy - h * 0.5f, w, h);
+    setColor(tone(0.25f));
+    glLineWidth(2.f);
+    outlineRect(cx - w * 0.5f, cy - h * 0.5f, w, h);
+    glLineWidth(1.f);
+}
+
 void drawRestartIcon(float cx, float cy) {
+    const float R = 14.f, D2R = (float)M_PI / 180.f;
     setColor(inkCol);
     glLineWidth(3.f);
     glBegin(GL_LINE_STRIP);
     for (int i = 0; i <= 24; ++i) {
-        float a = (40.f + i * (280.f / 24.f)) * (float)M_PI / 180.f;
-        glVertex2f(cx + cosf(a) * 14.f, cy + sinf(a) * 14.f);
+        float a = (40.f + i * (280.f / 24.f)) * D2R;
+        glVertex2f(cx + cosf(a) * R, cy + sinf(a) * R);
     }
     glEnd();
     glLineWidth(1.f);
-    float ex = cx + cosf(40.f * (float)M_PI / 180.f) * 14.f;
-    float ey = cy + sinf(40.f * (float)M_PI / 180.f) * 14.f;
+
+    // arrowhead at the arc start, pointing along the clockwise tangent
+    float a  = 40.f * D2R;
+    float ex = cx + cosf(a) * R, ey = cy + sinf(a) * R;
+    float tx = sinf(a), ty = -cosf(a);          // tangent direction
+    float rx = cosf(a), ry = sinf(a);           // radial direction
     glBegin(GL_TRIANGLES);
-    glVertex2f(ex - 7, ey + 2); glVertex2f(ex + 5, ey + 6); glVertex2f(ex + 3, ey - 7);
+    glVertex2f(ex + tx * 9.f, ey + ty * 9.f);
+    glVertex2f(ex + rx * 7.f, ey + ry * 7.f);
+    glVertex2f(ex - rx * 7.f, ey - ry * 7.f);
     glEnd();
 }
 
@@ -290,45 +345,57 @@ void renderHUD() {
     drawStr(30.f, WIN_H - 40.f, names[gPhase], mono);
     if (showHB) drawStr(100.f, WIN_H - 40.f, "[HITBOX]", mono);
 
-    // Bottom help line
-    setColor(tone(0.50f));
-    if (gState != STATE_START)
-        drawStrC(WIN_W * 0.5f, 14.f, std::string("SPACE/UP jump   DOWN duck   T theme: ") + THEMES[currentTheme].name + "   N next phase   F filter   S shot   P pause   R restart   H hitbox   M sound: "
-                 + (soundOn ? "on" : "off") + "   ESC quit",
+    // Help line: always on pause / game over, and only for the first seconds of a run
+    bool showHelp = (gState == STATE_PAUSED || gState == STATE_GAME_OVER ||
+                     (gState == STATE_PLAYING && score < 60.f));
+    if (showHelp) {
+        setColor(tone(0.78f));
+        drawStrC(WIN_W * 0.5f, 14.f,
+                 std::string("SPACE jump | DOWN duck | T theme: ") + THEMES[currentTheme].name +
+                 " | F filter | N time | S shot | P pause | H hitbox | M sound: " + (soundOn ? "on" : "off"),
                  GLUT_BITMAP_8_BY_13);
+    }
 
     if (gState == STATE_START) {
+        drawPanel(WIN_W * 0.5f, 256.f, 560.f, 152.f);
         setColor(inkCol);
-        drawStrC(WIN_W * 0.5f, 300.f, "CHRONO RUN : DN DASH", GLUT_BITMAP_TIMES_ROMAN_24);
-        setColor(tone(0.80f));
-        drawStrC(WIN_W * 0.5f, 265.f, "Press SPACE to start", mono);
-        setColor(tone(0.60f));
+        drawPixelTextC(WIN_W * 0.5f, 292.f, "CHRONO RUN : DN DASH", 4.f);
+        setColor(tone(0.85f));
+        drawStrC(WIN_W * 0.5f, 262.f, "Press SPACE to start", mono);
+        setColor(tone(0.65f));
         drawStrC(WIN_W * 0.5f, 240.f, "Jump over cones, barriers & bollards  -  Duck under high drones", GLUT_BITMAP_8_BY_13);
         setColor(curBodyCol);
-        drawStrC(WIN_W * 0.5f, 218.f, std::string("Dino Theme: [T] ") + THEMES[currentTheme].name, mono);
-        setColor(inkCol);
-        drawStrC(WIN_W * 0.5f, 200.f, "Made by - Ubayda & Rony", mono);
-        setColor(tone(0.50f));
+        drawStrC(WIN_W * 0.5f, 216.f, std::string("Dino Theme [T]: ") + THEMES[currentTheme].name, mono);
+
+        // theme swatches, current one outlined
+        float sx = WIN_W * 0.5f - THEME_COUNT * 22.f * 0.5f + 3.f;
+        for (int i = 0; i < THEME_COUNT; ++i) {
+            float x = sx + i * 22.f;
+            setColor(THEMES[i].belly); fillRect(x, 191.f, 16.f, 5.f);
+            setColor(THEMES[i].body);  fillRect(x, 196.f, 16.f, 9.f);
+            if (i == currentTheme) { setColor(inkCol); outlineRect(x - 2.f, 189.f, 20.f, 18.f); }
+        }
+
+        setColor(tone(0.60f));
         drawStrC(WIN_W * 0.5f, 50.f, "Nahdiul Islam Rony (231-115-069)  &  Abu Ubayda (231-115-080)", GLUT_BITMAP_8_BY_13);
         drawStrC(WIN_W * 0.5f, 32.f, "CSE-402 CG & IP Lab  |  Lecturer: Shrabanti Chowdhury  |  Section B", GLUT_BITMAP_8_BY_13);
     } else if (gState == STATE_PAUSED) {
+        drawPanel(WIN_W * 0.5f, 277.f, 340.f, 82.f);
         setColor(inkCol);
-        drawStrC(WIN_W * 0.5f, 280.f, "P A U S E D", GLUT_BITMAP_TIMES_ROMAN_24);
-        setColor(tone(0.60f));
-        drawStrC(WIN_W * 0.5f, 250.f, "Press P to resume", mono);
-        drawStrC(WIN_W * 0.5f, 215.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
+        drawPixelTextC(WIN_W * 0.5f, 272.f, "PAUSED", 5.f);
+        setColor(tone(0.70f));
+        drawStrC(WIN_W * 0.5f, 246.f, "Press P to resume", mono);
     } else if (gState == STATE_GAME_OVER) {
+        drawPanel(WIN_W * 0.5f, 261.f, 440.f, 150.f);
         setColor(inkCol);
-        drawStrC(WIN_W * 0.5f, 300.f, "G A M E   O V E R", GLUT_BITMAP_TIMES_ROMAN_24);
+        drawPixelTextC(WIN_W * 0.5f, 292.f, "GAME OVER", 5.f);
         drawRestartIcon(WIN_W * 0.5f, 262.f);
-        setColor(tone(0.60f));
+        setColor(tone(0.70f));
         drawStrC(WIN_W * 0.5f, 222.f, "Press SPACE or R to restart", mono);
         if ((int)score > prevBest && score > 5.f) {
             setColor(inkCol);
             drawStrC(WIN_W * 0.5f, 198.f, "NEW HIGH SCORE!", mono);
         }
-        setColor(tone(0.60f));
-        drawStrC(WIN_W * 0.5f, 172.f, "Made by - Ubayda & Rony", GLUT_BITMAP_8_BY_13);
     }
 }
 
